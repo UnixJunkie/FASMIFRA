@@ -1,0 +1,6 @@
+
+(executables
+  (names        fasmifra)
+  (public_names fasmifra)
+  (libraries batteries dolog minicli parany unix str line_oriented)
+  (modules fasmifra))
