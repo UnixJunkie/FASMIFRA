@@ -12,9 +12,9 @@ install: [
 depends: [
   "base-unix"
   "batteries"
-  "dolog"
+  "dolog" {>= "6.0.0"}
   "dune" {>= "1.11"}
-  "minicli"
+  "minicli" {>= "5.0.0"}
   "ocaml"
   "parany"
   "str"
