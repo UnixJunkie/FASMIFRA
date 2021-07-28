@@ -1,0 +1,33 @@
+opam-version: "2.0"
+authors: "Francois Berenger"
+maintainer: "unixjunkie@sdf.org"
+homepage: "https://github.com/UnixJunkie/FASMIFRA"
+bug-reports: "https://github.com/UnixJunkie/FASMIFRA/issues"
+dev-repo: "git+https://github.com/UnixJunkie/FASMIFRA.git"
+license: "GPL"
+build: ["dune" "build" "-p" name "-j" jobs]
+install: [
+  ["cp" "bin/fasmifra_fragment.py" "%{bin}%/fasmifra_fragment.py"]
+]
+depends: [
+  "base-unix"
+  "batteries"
+  "dolog"
+  "dune" {>= "1.10"}
+  "minicli"
+  "ocaml"
+  "parany"
+  "str"
+  "line_oriented"
+  "conf-rdkit"
+  "conf-python-3"
+]
+synopsis: "Molecular Generation by Fast Assembly of SMILES Fragments"
+description: """
+Generate molecules fast given a molecular training set.
+
+Properties of the generated molecules might significantly match
+those of the training set (training set distribution matching).
+
+Reference implementation for a submitted manuscript.
+"""
