@@ -2,11 +2,10 @@
 
 Reference implementation for the article
 "Fast Molecular Generation by Assembly of (Deep)SMILES Fragments".
-
 Generate molecules fast from a molecular training set while also
 doing training-set distribution matching.
 
-# How to install the software
+# Installing the software
 
 On Linux, you need python3-rdkit to be installed.
 
@@ -32,7 +31,7 @@ opam pin add fasmifra https://github.com/UnixJunkie/FASMIFRA.git
 
 We are currently working on an automated self-installer; stay tuned.
 
-# How to fragment molecules
+# Fragmenting molecules
 
 Those molecules are your "molecular training set".
 
@@ -58,7 +57,7 @@ optional arguments:
   -w FRAG_WEIGHT  fragment weight (default=150Da)
 ```
 
-# How to generate molecules from fragments
+# Generating molecules from fragments
 
 ```bash
 fasmifra -n 100000 -i my_molecules_frags.smi -o my_molecules_gen.smi
