@@ -17,7 +17,6 @@ depends: [
   "minicli" {>= "5.0.0"}
   "ocaml"
   "parany"
-  "str"
   "line_oriented"
   "conf-rdkit"
   "conf-python-3"
