@@ -5,6 +5,8 @@ Reference implementation for the article
 Generate molecules fast from a molecular training set while also
 doing training-set distribution matching.
 
+<img src="TOC.png" alt="logo" width="400"/>
+
 # Installing the software
 
 On Linux, you need python3-rdkit to be installed.
