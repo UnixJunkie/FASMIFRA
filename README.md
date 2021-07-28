@@ -67,11 +67,11 @@ fasmifra -n 100000 -i my_molecules_frags.smi -o my_molecules_gen.smi
 ```
 usage:
   fasmifra
-  [-i <filename>]: smiles fragments input file
-  [-o <filenams>: output file
-  [--seed <int>: RNG seed
-  [--deep-smiles: input/output molecules in DeepSMILES no-rings format
-  [-n <int>]: how many molecules to generate
+  -n <int>: how many molecules to generate
+  -i <filename>: smiles fragments input file
+  -o <filenams>: output file
+  [--seed <int>]: RNG seed
+  [--deep-smiles]: input/output molecules in DeepSMILES no-rings format
 ```
 
 # Bibliography
