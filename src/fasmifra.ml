@@ -364,6 +364,28 @@ let parse_SMILES_line line =
   with exn -> (Log.fatal "parse_SMILES_line: malformed line: '%s'" line;
                raise exn)
 
+(* marshal x to file *)
+let save fn x =
+  LO.with_out_file fn (fun out ->
+      Marshal.to_channel out x [Marshal.No_sharing]
+    )
+
+(* unmarshal x from file *)
+let restore fn =
+  LO.with_in_file fn Marshal.from_channel
+
+let cache_indexed_fragments force frags_fn seed_frags_frags_ht_pair =
+  let cache_fn = frags_fn ^ ".bin_cache" in
+  if not (Sys.file_exists cache_fn) || force then
+    let () =
+      if force then
+        Log.warn "overwriting indexed fragments cache: %s" cache_fn
+      else
+        Log.info "creating indexed fragments cache: %s" cache_fn in
+    save cache_fn seed_frags_frags_ht_pair
+  else
+    Log.error "cache file already exists (use -f to overwrite): %s" cache_fn
+
 let main () =
   let start = Unix.gettimeofday () in
   (* Logger ---------------------------------------------------------------- *)
