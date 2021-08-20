@@ -404,8 +404,9 @@ let main () =
       assemble_smiles_fragments in
   CLI.finalize (); (* ------------ CLI parsing ---------------- *)
   Log.info "indexing fragments";
-  let input_frags = LO.map input_frags_fn parse_SMILES_line in
-  let seed_fragments, frags_ht = index_fragments input_frags in
+  let seed_fragments, frags_ht =
+    let input_frags = LO.map input_frags_fn parse_SMILES_line in
+    index_fragments input_frags in
   Log.info "seed_frags: %d; attach_types: %d"
     (A.length seed_fragments) (Ht.length frags_ht);
   LO.with_out_file output_fn (fun out ->
