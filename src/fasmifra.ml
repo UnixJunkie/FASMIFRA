@@ -384,7 +384,16 @@ let cache_indexed_fragments force frags_fn seed_frags_frags_ht_pair =
         Log.info "creating indexed fragments cache: %s" cache_fn in
     save cache_fn seed_frags_frags_ht_pair
   else
-    Log.error "cache file already exists (use -f to overwrite): %s" cache_fn
+    Log.warn "cache file already exists (use -f to overwrite): %s" cache_fn
+
+let load_indexed_fragments frags_fn =
+  let cache_fn = frags_fn ^ ".bin_cache" in
+  if Sys.file_exists cache_fn then
+    let () = Log.info "reading indexed fragments from cache: %s" cache_fn in
+    restore cache_fn
+  else
+    let input_frags = LO.map frags_fn parse_SMILES_line in
+    index_fragments input_frags
 
 let main () =
   let start = Unix.gettimeofday () in
@@ -429,8 +438,7 @@ let main () =
   CLI.finalize (); (* ------------ CLI parsing ---------------- *)
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
-    let input_frags = LO.map input_frags_fn parse_SMILES_line in
-    let res = index_fragments input_frags in
+    let res = load_indexed_fragments input_frags_fn in
     cache_indexed_fragments force input_frags_fn res;
     res in
   Log.info "seed_frags: %d; attach_types: %d"
