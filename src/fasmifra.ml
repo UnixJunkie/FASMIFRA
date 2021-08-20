@@ -400,6 +400,7 @@ let main () =
               -i <filename>: smiles fragments input file\n  \
               -o <filenams>: output file\n  \
               -n <int>: how many molecules to generate\n  \
+              [-f]: overwrite existing indexed fragments cache file\n  \
               [-np <int>]: max number of processes (default=1)\n  \
               [-c <int>]: chunk size (for -np; default=1)\n  \
               [--seed <int>]: RNG seed\n  \
@@ -419,6 +420,7 @@ let main () =
   let output_fn = CLI.get_string ["-o"] args in
   let csize = CLI.get_int_def ["-c"] args 1 in
   let nprocs = CLI.get_int_def ["-np"] args 1 in
+  let force = CLI.get_set_bool ["-f"] args in
   let assemble =
     if CLI.get_set_bool ["--deep-smiles"] args then
       assemble_deepsmiles_fragments
@@ -428,7 +430,9 @@ let main () =
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
     let input_frags = LO.map input_frags_fn parse_SMILES_line in
-    index_fragments input_frags in
+    let res = index_fragments input_frags in
+    cache_indexed_fragments force input_frags_fn res;
+    res in
   Log.info "seed_frags: %d; attach_types: %d"
     (A.length seed_fragments) (Ht.length frags_ht);
   LO.with_out_file output_fn (fun out ->
