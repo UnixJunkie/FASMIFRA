@@ -397,14 +397,14 @@ let main () =
   if argc = 1 then
     (eprintf "usage:\n  \
               %s\n  \
-              [-i <filename>]: smiles fragments input file\n  \
-              [-o <filenams>: output file\n  \
-              [-np <int>]: max number of processes\n  \
-              [-c <int>]: chunk size (for -np); default=1\n  \
-              [--seed <int>: RNG seed\n  \
-              [--deep-smiles: input/output molecules in DeepSMILES\n  \
-              no-rings format\n  \
-              [-n <int>]: how many molecules to generate\n"
+              -i <filename>: smiles fragments input file\n  \
+              -o <filenams>: output file\n  \
+              -n <int>: how many molecules to generate\n  \
+              [-np <int>]: max number of processes (default=1)\n  \
+              [-c <int>]: chunk size (for -np; default=1)\n  \
+              [--seed <int>]: RNG seed\n  \
+              [--deep-smiles]: input/output molecules in DeepSMILES\n  \
+              no-rings format\n"
        Sys.argv.(0);
      exit 1);
   let verbose = CLI.get_set_bool ["-v"] args in
