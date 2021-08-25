@@ -1,7 +1,7 @@
 # FASMIFRA
 
 Reference implementation for the article
-"Fast Molecular Generation by Assembly of (Deep)SMILES Fragments".
+"Molecular Generation by Fast Assembly of (Deep)SMILES Fragments".
 Generate molecules fast from a molecular training set while also
 doing training-set distribution matching.
 
