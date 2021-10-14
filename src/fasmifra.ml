@@ -364,6 +364,37 @@ let parse_SMILES_line line =
   with exn -> (Log.fatal "parse_SMILES_line: malformed line: '%s'" line;
                raise exn)
 
+(* marshal x to file *)
+let save fn x =
+  LO.with_out_file fn (fun out ->
+      Marshal.to_channel out x [Marshal.No_sharing]
+    )
+
+(* unmarshal x from file *)
+let restore fn =
+  LO.with_in_file fn Marshal.from_channel
+
+let cache_indexed_fragments force frags_fn seed_frags_frags_ht_pair =
+  let cache_fn = frags_fn ^ ".bin_cache" in
+  if not (Sys.file_exists cache_fn) || force then
+    let () =
+      if force then
+        Log.warn "overwriting indexed fragments cache: %s" cache_fn
+      else
+        Log.info "creating indexed fragments cache: %s" cache_fn in
+    save cache_fn seed_frags_frags_ht_pair
+  else
+    Log.warn "cache file already exists (use -f to overwrite): %s" cache_fn
+
+let load_indexed_fragments force frags_fn =
+  let cache_fn = frags_fn ^ ".bin_cache" in
+  if (not force) && Sys.file_exists cache_fn then
+    let () = Log.info "reading indexed fragments from cache: %s" cache_fn in
+    restore cache_fn
+  else
+    let input_frags = LO.map frags_fn parse_SMILES_line in
+    index_fragments input_frags
+
 let main () =
   let start = Unix.gettimeofday () in
   (* Logger ---------------------------------------------------------------- *)
@@ -375,14 +406,15 @@ let main () =
   if argc = 1 then
     (eprintf "usage:\n  \
               %s\n  \
-              [-i <filename>]: smiles fragments input file\n  \
-              [-o <filenams>: output file\n  \
-              [-np <int>]: max number of processes\n  \
-              [-c <int>]: chunk size (for -np); default=1\n  \
-              [--seed <int>: RNG seed\n  \
-              [--deep-smiles: input/output molecules in DeepSMILES\n  \
-              no-rings format\n  \
-              [-n <int>]: how many molecules to generate\n"
+              -i <filename>: smiles fragments input file\n  \
+              -o <filenams>: output file\n  \
+              -n <int>: how many molecules to generate\n  \
+              [-f]: overwrite existing indexed fragments cache file\n  \
+              [-np <int>]: max number of processes (default=1)\n  \
+              [-c <int>]: chunk size (for -np; default=1)\n  \
+              [--seed <int>]: RNG seed\n  \
+              [--deep-smiles]: input/output molecules in DeepSMILES\n  \
+              no-rings format\n"
        Sys.argv.(0);
      exit 1);
   let verbose = CLI.get_set_bool ["-v"] args in
@@ -397,6 +429,7 @@ let main () =
   let output_fn = CLI.get_string ["-o"] args in
   let csize = CLI.get_int_def ["-c"] args 1 in
   let nprocs = CLI.get_int_def ["-np"] args 1 in
+  let force = CLI.get_set_bool ["-f"] args in
   let assemble =
     if CLI.get_set_bool ["--deep-smiles"] args then
       assemble_deepsmiles_fragments
@@ -404,8 +437,10 @@ let main () =
       assemble_smiles_fragments in
   CLI.finalize (); (* ------------ CLI parsing ---------------- *)
   Log.info "indexing fragments";
-  let input_frags = LO.map input_frags_fn parse_SMILES_line in
-  let seed_fragments, frags_ht = index_fragments input_frags in
+  let seed_fragments, frags_ht =
+    let res = load_indexed_fragments force input_frags_fn in
+    cache_indexed_fragments force input_frags_fn res;
+    res in
   Log.info "seed_frags: %d; attach_types: %d"
     (A.length seed_fragments) (Ht.length frags_ht);
   LO.with_out_file output_fn (fun out ->
