@@ -87,9 +87,9 @@ usage:
 
 # Bibliography
 
-[1] Berenger, F., & Tsuda, K. (2021).
-"Fast Molecular Generation by Assembly of (Deep)SMILES Fragments".
-Submitted manuscript.
+[1] Berenger, F., Tsuda, K.
+Molecular generation by Fast Assembly of (Deep)SMILES fragments.
+J Cheminform 13, 88 (2021). https://doi.org/10.1186/s13321-021-00566-4
 
 [2] O'Boyle, N., & Dalke, A. (2018).
 "DeepSMILES: an adaptation of SMILES for use in machine-learning of chemical structures".
