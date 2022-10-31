@@ -119,10 +119,15 @@ if __name__ == '__main__':
             # might be only very few possibilities
             frags_set = set()
             bitstring = list("0" * dico_size)
+            num_frags = len(cano_frags)
             for frag_cano_smi in cano_frags:
                 frag_i = frag_to_index[frag_cano_smi]
+                frags_set.add(frag_i)
                 bitstring[frag_i] = "1"
-            print("%s\t%s" % ("".join(bitstring), name), file=bits_out)
+            if num_frags == len(frags_set):
+                print("%s\t%s" % ("".join(bitstring), name), file=bits_out)
+            else:
+                print("duplicated frags in %s" % name, file=sys.stderr)
     # post-processing ---------------------------------------------------------
     after = time.time()
     dt = after - before
