@@ -69,6 +69,7 @@ if __name__ == '__main__':
         count += 1        
         if not mol:
             errors += 1
+            print("cannot parse: %s" % smi, file=sys.stderr)
             continue
         rw_mol = None
         rw_mol = Chem.RWMol(mol)
