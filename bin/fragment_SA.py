@@ -38,13 +38,14 @@ def nb_heavy_atom_neighbors(a):
     return res
 
 def type_atom(a):
-    # stereo chemistry is ignored for the moment
+    # stereo chemistry is ignored
     nb_pi_electrons = Pairs.Utils.NumPiElectrons(a)
     atom_num = a.GetAtomicNum()
     nbHA = nb_heavy_atom_neighbors(a)
+    nbH = a.getTotalNumHs()
     formal_charge = a.GetFormalCharge()
     # make this easy to parse / unambiguous
-    res = "%d,%d,%d,%d" % (nb_pi_electrons, atom_num, nbHA, formal_charge)
+    res = "%d,%d,%d,%d,%d" % (nb_pi_electrons, atom_num, nbHA, nbH, formal_charge)
     return res
 
 def log_protected_bond(debug, name, b):
