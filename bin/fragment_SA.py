@@ -101,7 +101,7 @@ def tag_cut_bonds(frag_weight, randomize, atom_types_dict, mol):
         # tag and replace all cut bonds in the RWMol
         for i in to_cut:
             b_i = mol.GetBondWithIdx(i)
-            bond_type = b_i.GetBondType() # could be any non-ring bond
+            bond_type = b_i.GetBondType() # no more single bonds only
             a_j = b_i.GetBeginAtom()
             j = a_j.GetIdx()
             a_j_t = type_atom(mol.GetAtomWithIdx(j))
@@ -109,20 +109,19 @@ def tag_cut_bonds(frag_weight, randomize, atom_types_dict, mol):
             k = a_k.GetIdx()
             a_k_t = type_atom(mol.GetAtomWithIdx(k))
             rw_mol.RemoveBond(j, k)
-            # we will replace this bond by -['*][''*]-
-            # ' and '' will be isotope numbers encoding the bond
+            # we will replace this bond by -[*:i][*:j]-
             # start and end atom types
             start_o = rw_mol.AddAtom(Chem.Atom(0)) # wildcard atom has atomic number 0
             start_a = rw_mol.GetAtomWithIdx(start_o)
-            # encode attached atom's type using atom map num
+            # encode attached atom's type with a SMILES atom class
             start_a.SetAtomMapNum(index_for_atom_type(atom_types_dict, a_j_t))
             end_o = rw_mol.AddAtom(Chem.Atom(0)) # wildcard atom
             stop_o = rw_mol.GetAtomWithIdx(end_o)
             # encode attached atom's type
             stop_o.SetAtomMapNum(index_for_atom_type(atom_types_dict, a_k_t))
-            rw_mol.AddBond(j, start_o, Chem.BondType.SINGLE)
-            rw_mol.AddBond(start_o, end_o, bond_type)
-            rw_mol.AddBond(end_o, k, Chem.BondType.SINGLE)
+            rw_mol.AddBond(j, start_o, bond_type)
+            rw_mol.AddBond(start_o, end_o, Chem.BondType.SINGLE)
+            rw_mol.AddBond(end_o, k, bond_type)
         new_mol = rw_mol.GetMol()
         # forbid the generated SMILES to start w/ an unspecified atom
         assert(new_mol.GetAtomWithIdx(0).GetAtomicNum() != 0);
