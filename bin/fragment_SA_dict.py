@@ -111,6 +111,7 @@ if __name__ == '__main__':
             except KeyError:
                 frags_count[frag_cano_smi] = 1
     # 2) store fragments dictionary on disk -----------------------------------
+    print("computing fragments dictionary...")
     # dico and count
     kvs = key_values(frags_count)
     # decr. count sort
@@ -125,7 +126,7 @@ if __name__ == '__main__':
             print("%s\t%d\t%d" % (cano_smi, i, frag_count), file=dico_out)
     seen_frags = len(kvs)
     index_size = len(frag_to_index)
-    print("seen_frags/dico_size: %d/%d" % (seen_frags, index_size), file=sys.stderr)
+    print("seen_frags/dico_size: %d/%d" % (seen_frags, index_size))
     # 3) encode input molecules -----------------------------------------------
     mols_w_dup = 0
     mols_w_rare = 0
@@ -138,20 +139,20 @@ if __name__ == '__main__':
             bitstring = list("0" * index_size)
             num_frags = len(cano_frags)
             for frag_cano_smi in cano_frags:
-                frag_i = frag_to_index[frag_cano_smi]
-                frags_set.add(frag_i)
-                bitstring[frag_i] = "1"
-            if num_frags == len(frags_set):
-                # no duplicated fragment in this molecule
-                frag_indices = list(frags_set)
-                if max_frags == -1 or \
-                   list_for_all_p(lambda x: x < max_frags, frag_indices):
-                    # no rare fragment in this molecule
-                    print("%s\t%s" % ("".join(bitstring), name), file=bits_out)
-                else:
-                    print("rare frags in %s" % name, file=sys.stderr)
+                frag_i = frag_to_index.get(frag_cano_smi, -1)
+                if frag_i == -1:
+                    print("rare frag in %s" % name, file=sys.stderr)
                     mols_w_rare += 1
-            else:
+                    num_frags = -1
+                    break
+                else:
+                    frags_set.add(frag_i)
+                    bitstring[frag_i] = "1"
+            if num_frags == len(frags_set):
+                # no duplicate/rare frag in this molecule
+                frag_indices = list(frags_set)
+                print("%s\t%s" % ("".join(bitstring), name), file=bits_out)
+            elif num_frags != -1:
                 print("duplicated frags in %s" % name, file=sys.stderr)
                 mols_w_dup += 1
     # post-processing ---------------------------------------------------------
@@ -161,4 +162,4 @@ if __name__ == '__main__':
 %d read errors\n\
 %d molecules w/ dup frags\n\
 %d molecules w/ rare frags" %
-          (count, count / dt, errors, mols_w_dup, mols_w_rare), file=sys.stderr)
+          (count, count / dt, errors, mols_w_dup, mols_w_rare))
