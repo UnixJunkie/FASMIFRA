@@ -4,7 +4,8 @@
 # Tsuda laboratory, Tokyo University,
 # 5-1-5 Kashiwa-no-ha, Kashiwa-shi, Chiba-ken, 277-8561, Japan.
 #
-# Ultra-fast generator of only valid molecules using (Deep)SMILES fragments
+# Molecular fragmenter for bitstring representation of molecules
+# using a fragments dictionary
 
 import argparse
 import random
@@ -36,14 +37,6 @@ def nb_heavy_atom_neighbors(a):
             res += 1
     return res
 
-def get_stereo_center_indexes(m):
-    res = {}
-    # unassigned stereo centers are not reported;
-    # use includeUnassigned=True to change
-    for i, k in Chem.FindMolChiralCenters(m):
-        res[i] = True
-    return res
-
 def type_atom(a):
     # stereo chemistry is ignored for the moment
     nb_pi_electrons = Pairs.Utils.NumPiElectrons(a)
@@ -63,15 +56,10 @@ def log_protected_bond(debug, name, b):
 # we protect it)
 def find_cuttable_bonds(mol, debug = False):
     name = mol.GetProp("name")
-    stereo_center_indexes = get_stereo_center_indexes(mol)
     for b in mol.GetBonds():
         # protect bonds to/from a stereo center
         i = b.GetBeginAtomIdx()
         j = b.GetEndAtomIdx()
-        if ((stereo_center_indexes.get(i) == True) or
-            (stereo_center_indexes.get(j) == True)):
-           b.SetBoolProp("protected", True)
-           log_protected_bond(debug, name, b)
         # protect bonds between stereo bond atoms and their stereo atoms
         if b.GetStereo() != rdkit.Chem.rdchem.BondStereo.STEREONONE:
             (k, l) = b.GetStereoAtoms()
