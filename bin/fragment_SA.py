@@ -48,10 +48,6 @@ def type_atom(a):
     res = "%d,%d,%d,%d,%d" % (nb_pi_electrons, atom_num, nbHA, nbH, formal_charge)
     return res
 
-def log_protected_bond(debug, name, b):
-    if debug:
-        print('mol %s: protected bond %d' % (name, b.GetIdx()), file=sys.stderr)
-
 # any non-ring bond
 def find_cuttable_bonds(mol, debug = False):
     name = mol.GetProp("name")
@@ -71,8 +67,7 @@ def index_for_atom_type(atom_types_dict, atom_type):
     try:
         return atom_types_dict[atom_type]
     except KeyError:
-        # want indexes to start at 1; so the isotope number is
-        # always explicit in the fragments SMILES output
+        # indexes need to start at 1 (SetAtomMapNum requires it)
         v = len(atom_types_dict) + 1
         atom_types_dict[atom_type] = v
         return v
