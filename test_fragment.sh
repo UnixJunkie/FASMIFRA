@@ -17,4 +17,4 @@ for n in `echo 64 128 256 512 1024 2048 4096 8192 16384`; do
 done
 
 # representable molecules Vs num_bits
-wc -l chembl_20000_b*.txt
+wc -l chembl_20000_b*.txt | sort -n -k1
