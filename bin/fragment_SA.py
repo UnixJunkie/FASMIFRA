@@ -52,40 +52,12 @@ def log_protected_bond(debug, name, b):
     if debug:
         print('mol %s: protected bond %d' % (name, b.GetIdx()), file=sys.stderr)
 
-# only single bonds not in rings, no stereo bonds,
-# no bond to/from a specified stereo center (i.e. if stereo was set,
-# we protect it)
+# any non-ring bond
 def find_cuttable_bonds(mol, debug = False):
     name = mol.GetProp("name")
-    for b in mol.GetBonds():
-        # protect bonds to/from a stereo center
-        i = b.GetBeginAtomIdx()
-        j = b.GetEndAtomIdx()
-        # protect bonds between stereo bond atoms and their stereo atoms
-        if b.GetStereo() != rdkit.Chem.rdchem.BondStereo.STEREONONE:
-            (k, l) = b.GetStereoAtoms()
-            b0 = mol.GetBondBetweenAtoms(i, k)
-            b1 = mol.GetBondBetweenAtoms(i, l)
-            b2 = mol.GetBondBetweenAtoms(j, k)
-            b3 = mol.GetBondBetweenAtoms(j, l)
-            if b0 != None:
-                b0.SetBoolProp("protected", True)
-                log_protected_bond(debug, name, b0)
-            if b1 != None:
-                b1.SetBoolProp("protected", True)
-                log_protected_bond(debug, name, b1)
-            if b2 != None:
-                b2.SetBoolProp("protected", True)
-                log_protected_bond(debug, name, b2)
-            if b3 != None:
-                b3.SetBoolProp("protected", True)
-                log_protected_bond(debug, name, b3)
     res = []
     for b in mol.GetBonds():
-        if ((b.GetBondType() == rdkit.Chem.rdchem.BondType.SINGLE) and
-            (not b.IsInRing()) and
-            (b.GetStereo() == rdkit.Chem.rdchem.BondStereo.STEREONONE) and
-            (b.HasProp("protected") == 0)): # HasProp returns an int... :(
+        if not b.IsInRing():
             res.append(b)
     return res
 
