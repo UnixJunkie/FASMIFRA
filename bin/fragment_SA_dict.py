@@ -34,10 +34,20 @@ def canonicalize(smi):
     mol = Chem.MolFromSmiles(smi)
     return Chem.MolToSmiles(mol, canonical=True)
 
+def list_for_all(l):
+    try:
+        _i = l.index(False)
+        return False
+    except ValueError:
+        return True
+
+def list_for_all_p(p, l):
+    return list_for_all(list(map(p, l)))
+
 if __name__ == '__main__':
     before = time.time()
     # CLI options parsing
-    parser = argparse.ArgumentParser(description = "Create fragments dictionary")
+    parser = argparse.ArgumentParser(description = "Create fragments dictionary and encode molecules")
     # can also output as bitstrings the input molecules
     parser.add_argument("-i", metavar = "input.smi", dest = "smi_in_fn",
                         help = "input molecules")
@@ -47,6 +57,8 @@ if __name__ == '__main__':
                         help = "output encoded molecules")
     parser.add_argument("--seed", dest = "seed", default = -1,
                         type = int, help = "RNG seed")
+    parser.add_argument("-n", dest = "num_fragments", default = -1,
+                        type = int, help = "use only N most frequent fragments (default: -1; no-limit)")
     # parse CLI
     if len(sys.argv) == 1:
         # user has no clue of what to do -> usage
@@ -57,6 +69,7 @@ if __name__ == '__main__':
     dico_out_fn = args.dico_out_fn
     bits_out_fn = args.bits_out_fn
     rng_seed = args.seed
+    max_frags = args.num_fragments
     randomize = True
     if rng_seed != -1:
         # only if the user asked for it, we make experiments repeatable
@@ -64,7 +77,6 @@ if __name__ == '__main__':
     count = 0
     errors = 0
     # fragments indexing ------------------------------------------------------
-    max_frags = 1000 # FBR: put on the CLI; default should be -1 (all frags seen)
     frags_count = {} # how many time each canonical fragment was seen
     # 1) build the fragments dictionary ---------------------------------------
     cut_mols = []
@@ -106,30 +118,47 @@ if __name__ == '__main__':
     frag_to_index = {}
     with open(dico_out_fn, 'w') as dico_out:
         print("#frag_cano_smi\tindex\tcount", file=dico_out) # header
-        for i, (cano_smi, count) in enumerate(kvs):
+        for i, (cano_smi, frag_count) in enumerate(kvs):
+            if i == max_frags - 1:
+                break # trim encoding dictionary
             frag_to_index[cano_smi] = i
-            print("%s\t%d\t%d" % (cano_smi, i, count), file=dico_out)
-    dico_size = len(kvs)
-    print("seen_frags: %d" % dico_size, file=sys.stderr)
+            print("%s\t%d\t%d" % (cano_smi, i, frag_count), file=dico_out)
+    seen_frags = len(kvs)
+    index_size = len(frag_to_index)
+    print("seen_frags/dico_size: %d/%d" % (seen_frags, index_size), file=sys.stderr)
     # 3) encode input molecules -----------------------------------------------
+    mols_w_dup = 0
+    mols_w_rare = 0
     with open(bits_out_fn, 'w') as bits_out:
         for cano_frags, name in cut_mols:
             # a molecule can only be encoded if it is made of distinct fragments
             # only information loss is how fragments are connected; however, there
             # might be only very few possibilities
             frags_set = set()
-            bitstring = list("0" * dico_size)
+            bitstring = list("0" * index_size)
             num_frags = len(cano_frags)
             for frag_cano_smi in cano_frags:
                 frag_i = frag_to_index[frag_cano_smi]
                 frags_set.add(frag_i)
                 bitstring[frag_i] = "1"
             if num_frags == len(frags_set):
-                print("%s\t%s" % ("".join(bitstring), name), file=bits_out)
+                # no duplicated fragment in this molecule
+                frag_indices = list(frags_set)
+                if max_frags == -1 or \
+                   list_for_all_p(lambda x: x < max_frags, frag_indices):
+                    # no rare fragment in this molecule
+                    print("%s\t%s" % ("".join(bitstring), name), file=bits_out)
+                else:
+                    print("rare frags in %s" % name, file=sys.stderr)
+                    mols_w_rare += 1
             else:
                 print("duplicated frags in %s" % name, file=sys.stderr)
+                mols_w_dup += 1
     # post-processing ---------------------------------------------------------
     after = time.time()
     dt = after - before
-    print("read %d molecules at %.2f Hz; %d errors" %
-          (count, count / dt, errors), file=sys.stderr)
+    print("read %d molecules at %.2f Hz\n\
+%d read errors\n\
+%d molecules w/ dup frags\n\
+%d molecules w/ rare frags" %
+          (count, count / dt, errors, mols_w_dup, mols_w_rare), file=sys.stderr)
