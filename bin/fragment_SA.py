@@ -42,7 +42,7 @@ def type_atom(a):
     nb_pi_electrons = Pairs.Utils.NumPiElectrons(a)
     atom_num = a.GetAtomicNum()
     nbHA = nb_heavy_atom_neighbors(a)
-    nbH = a.getTotalNumHs()
+    nbH = a.GetTotalNumHs()
     formal_charge = a.GetFormalCharge()
     # make this easy to parse / unambiguous
     res = "%d,%d,%d,%d,%d" % (nb_pi_electrons, atom_num, nbHA, nbH, formal_charge)
@@ -88,19 +88,8 @@ def get_cut_bonds(frag_weight, mol):
     random.shuffle(cut_bonds_indexes)
     return cut_bonds_indexes[0:max_cuts]
 
-def random_reorder_atoms(randomize, mol):
-    if randomize:
-        rand_order = list(range(mol.GetNumAtoms()))
-        random.shuffle(rand_order)
-        rand_mol = Chem.RenumberAtoms(mol, newOrder=rand_order)
-        set_name(rand_mol, get_name(mol))
-        return rand_mol
-    else:
-        return mol
-
-def tag_cut_bonds(frag_weight, randomize, atom_types_dict, input_mol):
-    name = get_name(input_mol)
-    mol = random_reorder_atoms(randomize, input_mol)
+def tag_cut_bonds(frag_weight, randomize, atom_types_dict, mol):
+    name = get_name(mol)
     to_cut = get_cut_bonds(frag_weight, mol)
     if len(to_cut) == 0:
         # molecule too small: not fragmented
@@ -117,6 +106,7 @@ def tag_cut_bonds(frag_weight, randomize, atom_types_dict, input_mol):
         # tag and replace all cut bonds in the RWMol
         for i in to_cut:
             b_i = mol.GetBondWithIdx(i)
+            bond_type = b_i.GetBondType() # could be any non-ring bond
             a_j = b_i.GetBeginAtom()
             j = a_j.GetIdx()
             a_j_t = type_atom(mol.GetAtomWithIdx(j))
@@ -129,14 +119,14 @@ def tag_cut_bonds(frag_weight, randomize, atom_types_dict, input_mol):
             # start and end atom types
             start_o = rw_mol.AddAtom(Chem.Atom(0)) # wildcard atom has atomic number 0
             start_a = rw_mol.GetAtomWithIdx(start_o)
-            # encode attached atom's type with an isotope number
-            start_a.SetIsotope(index_for_atom_type(atom_types_dict, a_j_t))
+            # encode attached atom's type using atom map num
+            start_a.SetAtomMapNum(index_for_atom_type(atom_types_dict, a_j_t))
             end_o = rw_mol.AddAtom(Chem.Atom(0)) # wildcard atom
             stop_o = rw_mol.GetAtomWithIdx(end_o)
             # encode attached atom's type
-            stop_o.SetIsotope(index_for_atom_type(atom_types_dict, a_k_t))
+            stop_o.SetAtomMapNum(index_for_atom_type(atom_types_dict, a_k_t))
             rw_mol.AddBond(j, start_o, Chem.BondType.SINGLE)
-            rw_mol.AddBond(start_o, end_o, Chem.BondType.SINGLE)
+            rw_mol.AddBond(start_o, end_o, bond_type)
             rw_mol.AddBond(end_o, k, Chem.BondType.SINGLE)
         new_mol = rw_mol.GetMol()
         # forbid the generated SMILES to start w/ an unspecified atom
@@ -156,7 +146,7 @@ if __name__ == '__main__':
                         type = int, help = "RNG seed")
     parser.add_argument("-n", dest = "nb_passes", default = 1,
                         type = int, help = "number of fragmentation passes")
-    # 150 Da: D. Rognan's suggested max fragment weight
+    # 150 Da: Rognan's suggested max fragment weight
     parser.add_argument("-w", dest = "frag_weight", default = 150.0,
                         type = float, help = "fragment weight (default=150Da)")
     # parse CLI
