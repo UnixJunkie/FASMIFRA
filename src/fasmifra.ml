@@ -326,39 +326,6 @@ let get_rng = function
     let seed = BatRandom.State.int rng rand_int_bound in
     BatRandom.State.make [|seed|]
 
-(* tell how much the worker must generate *)
-let demux total current csize () =
-  let to_generate = total - !current in
-  if to_generate = 0 then
-    raise Parany.End_of_input
-  else
-    let curr_csize = min csize to_generate in
-    current := !current + curr_csize;
-    curr_csize
-
-(* just to get the type right *)
-let worker_rng = ref (BatRandom.State.make_self_init ())
-
-(* setup this worker's RNG to be (very probably) uniq *)
-let init rng rank =
-  let seed = ref 0 in
-  for _i = 0 to rank do
-    seed := BatRandom.State.int rng rand_int_bound
-  done;
-  Log.info "rank: %d seed: %d" rank !seed; (* visual check they differ *)
-  worker_rng := BatRandom.State.make [|!seed|]
-
-let work f seed_fragments frags_ht n =
-  Array.init n (fun _i ->
-      sprintf_tokens (f !worker_rng seed_fragments frags_ht)
-    )
-
-let mux out count tokens_str_a =
-  A.iter (fun token_str ->
-      fprintf out "%s\tgenmol_%d\n" token_str !count;
-      incr count
-    ) tokens_str_a
-
 let parse_SMILES_line line =
   try Scanf.sscanf line "%s@\t%s" (fun smiles name -> (smiles, name))
   with exn -> (Log.fatal "parse_SMILES_line: malformed line: '%s'" line;
@@ -410,8 +377,6 @@ let main () =
               -o <filenams>: output file\n  \
               -n <int>: how many molecules to generate\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
-              [-np <int>]: max number of processes (default=1)\n  \
-              [-c <int>]: chunk size (for -np; default=1)\n  \
               [--seed <int>]: RNG seed\n  \
               [--deep-smiles]: input/output molecules in DeepSMILES\n  \
               no-rings format\n"
@@ -427,8 +392,6 @@ let main () =
     | Some seed -> Repeatable (BatRandom.State.make [|seed|]) in
   let input_frags_fn = CLI.get_string ["-i"] args in
   let output_fn = CLI.get_string ["-o"] args in
-  let csize = CLI.get_int_def ["-c"] args 1 in
-  let nprocs = CLI.get_int_def ["-np"] args 1 in
   let force = CLI.get_set_bool ["-f"] args in
   let assemble =
     if CLI.get_set_bool ["--deep-smiles"] args then
@@ -444,7 +407,6 @@ let main () =
   Log.info "seed_frags: %d; attach_types: %d"
     (A.length seed_fragments) (Ht.length frags_ht);
   LO.with_out_file output_fn (fun out ->
-      if nprocs <= 1 then
         match rng_style with
         | Performance rng ->
           for i = 1 to n do
@@ -459,18 +421,6 @@ let main () =
             fprintf_tokens out tokens;
             fprintf out "\tgenmol_%d\n" i
           done
-      else (* nprocs > 1 then *)
-        match rng_style with
-        | Repeatable _ ->
-          failwith "only Performance rng supported w/ nprocs > 1"
-        | Performance rng ->
-          Parany.run
-            ~init:(init rng)
-            ~csize:1 (* fixed; keep 1 here *)
-            nprocs
-            ~demux:(demux n (ref 0) csize)
-            ~work:(work assemble seed_fragments frags_ht)
-            ~mux:(mux out (ref 0))
     );
   let stop = Unix.gettimeofday () in
   let dt = stop -. start in
