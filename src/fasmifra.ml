@@ -24,9 +24,9 @@ type input_smi_token = Open_paren
                      | Rest of string
 
 let parens_regexp = Str.regexp "[()]"
-let cut_bond_regexp = Str.regexp "\\[[0-9]+\\*\\]\\[[0-9]+\\*\\]"
+let cut_bond_regexp = Str.regexp "\\[\\*:[0-9]+\\]\\[\\*:[0-9]+\\]"
 (* cut bond with a parenthesis inside must be rewritten *)
-let paren_cut_bond_regexp = Str.regexp "\\[[0-9]+\\*\\](\\[[0-9]+\\*\\]"
+let paren_cut_bond_regexp = Str.regexp "\\[\\*:[0-9]+\\](\\[\\*:[0-9]+\\]"
 let bracket_atom_regexp = Str.regexp "\\[[^]]+\\]"
 let double_digits_regexp = Str.regexp "%[0-9][0-9]"
 let single_digit_regexp = Str.regexp "[0-9]"
