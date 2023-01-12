@@ -4,7 +4,7 @@
 # Tsuda laboratory, Tokyo University,
 # 5-1-5 Kashiwa-no-ha, Kashiwa-shi, Chiba-ken, 277-8561, Japan.
 #
-# Ultra-fast generator of only valid molecules using (Deep)SMILES fragments
+# A wilder molecular fragmenting scheme
 
 import argparse
 import random
@@ -49,9 +49,10 @@ def type_atom(a):
     nb_pi_electrons = Pairs.Utils.NumPiElectrons(a)
     atom_num = a.GetAtomicNum()
     nbHA = nb_heavy_atom_neighbors(a)
+    numHs = a.GetTotalNumHs()
     formal_charge = a.GetFormalCharge()
     # make this easy to parse / unambiguous
-    res = "%d,%d,%d,%d" % (nb_pi_electrons, atom_num, nbHA, formal_charge)
+    res = "%d,%d,%d,%d,%d" % (nb_pi_electrons, atom_num, nbHA, numHs, formal_charge)
     return res
 
 def log_protected_bond(debug, name, b):
