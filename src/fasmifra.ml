@@ -39,13 +39,13 @@ let renumber_ring_closure ht (smi_depth: int) (ring_closure: int) =
     res
 
 let parse_cut_bond s =
-  try Scanf.sscanf s "[%d*][%d*]" (fun i j -> Cut_bond (i, j))
+  try Scanf.sscanf s "[*:%d][*:%d]" (fun i j -> Cut_bond (i, j))
   with exn ->
     let () = Log.fatal "Fasmifra.parse_cut_bond: cannot parse '%s'" s in
     raise exn
 
 let parse_paren_cut_bond s =
-  try Scanf.sscanf s "[%d*]([%d*]" (fun i j -> (i, j))
+  try Scanf.sscanf s "[*:%d]([*:%d]" (fun i j -> (i, j))
   with exn ->
     let () = Log.fatal "Fasmifra.parse_paren_cut_bond: cannot parse '%s'" s in
     raise exn
@@ -69,22 +69,13 @@ let fprintf_ring_closure out c =
   else
     fprintf out "%d" c
 
-let bprintf_ring_closure buff c =
-  if c > 99 then (* forbid triple digits ring closure *)
-    (Log.fatal "Fasmifra.bprintf_ring_closure: %d > 99" c;
-     exit 1)
-  else if c > 9 then
-    bprintf buff "%%%d" c
-  else
-    bprintf buff "%d" c
-
 let string_of_smi_token = function
   | Open_paren -> "("
   | Close_paren -> ")"
   | Cut_bond (i, j) ->
     (* only OK in debugging output: those should disappear
-     * during fragments assembly *)
-    sprintf "[%d*][%d*]" i j
+       during fragments assembly *)
+    sprintf "[*:%d][*:%d]" i j
   | Ring_closure rc -> string_of_ring_closure rc
   | Bracket_atom x
   | Rest x -> x
@@ -98,26 +89,11 @@ let fprintf_smi_token out = function
   | Bracket_atom x
   | Rest x -> output_string out x
 
-(* for the parallel version, if we let the workers do the string conversion *)
-(* it might be faster to let the muxer to do it though, TO TEST *)
-let bprintf_smi_token buff = function
-  | Open_paren -> Buff.add_char buff '('
-  | Close_paren -> Buff.add_char buff ')'
-  | Cut_bond _ -> assert(false) (* should have been deleted earlier *)
-  | Ring_closure rc -> bprintf_ring_closure buff rc
-  | Bracket_atom x
-  | Rest x -> Buff.add_string buff x
-
 let string_of_tokens tokens =
   String.concat "" (L.map string_of_smi_token tokens)
 
 let fprintf_tokens out tokens =
   L.iter (fprintf_smi_token out) tokens
-
-let sprintf_tokens tokens =
-  let buff = Buff.create 256 in
-  L.iter (bprintf_smi_token buff) tokens;
-  Buff.contents buff
 
 let parse_double_digit_ring_closure s =
   try Scanf.sscanf s "%%%d" (fun x -> assert(x >= 10); x)
@@ -235,13 +211,13 @@ let rec fragment seeds ht tokens =
   L.iter (fragment seeds ht) branches
 
 (* handle rare case: put the parenthesis before the first atom.
-   e.g: "[1*]([2*]" --> "([1*][2*]". Not sure this is still needed. *)
+   e.g: "[*:1]([*:2]" --> "([*:1][*:2]". Not sure this is still needed. *)
 let rewrite_paren_cut_bond_smiles s =
   String.concat ""
     (L.map Str.(function
          | Delim paren_cut_bond ->
            let (i, j) = parse_paren_cut_bond paren_cut_bond in
-           sprintf "([%d*][%d*]" i j
+           sprintf "([*:%d][*:%d]" i j
          | Text t -> t
        ) (Str.bounded_full_split paren_cut_bond_regexp s 1024)
     )
@@ -317,15 +293,6 @@ let assemble_deepsmiles_fragments rng seeds branches =
 type rng_style = Performance of BatRandom.State.t
                | Repeatable of BatRandom.State.t
 
-(* [Random.int bound]: bound must be greater than 0 and less than 2{^30}. *)
-let rand_int_bound = (BatInt.pow 2 30) - 1
-
-let get_rng = function
-  | Performance _ -> failwith "Fasmifra.get_rng: don't call this if you want performance"
-  | Repeatable rng ->
-    let seed = BatRandom.State.int rng rand_int_bound in
-    BatRandom.State.make [|seed|]
-
 let parse_SMILES_line line =
   try Scanf.sscanf line "%s@\t%s" (fun smiles name -> (smiles, name))
   with exn -> (Log.fatal "parse_SMILES_line: malformed line: '%s'" line;
@@ -385,8 +352,6 @@ let main () =
   let verbose = CLI.get_set_bool ["-v"] args in
   if verbose then Log.(set_log_level DEBUG);
   let n = CLI.get_int ["-n"] args in
-  (* to make things truly repeatable, this rng is in fact a stream
-   * of RNG seeds *)
   let rng_style = match CLI.get_int_opt ["--seed"] args with
     | None -> Performance (BatRandom.State.make_self_init ())
     | Some seed -> Repeatable (BatRandom.State.make [|seed|]) in
@@ -414,9 +379,9 @@ let main () =
             fprintf_tokens out tokens;
             fprintf out "\tgenmol_%d\n" i
           done
-        | Repeatable _ ->
+        | Repeatable seed_stream ->
           for i = 1 to n do
-            let rng = get_rng rng_style in
+            let rng = Random.State.split seed_stream in
             let tokens = assemble rng seed_fragments frags_ht in
             fprintf_tokens out tokens;
             fprintf out "\tgenmol_%d\n" i
