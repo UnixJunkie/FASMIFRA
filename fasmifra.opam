@@ -15,7 +15,7 @@ depends: [
   "dolog" {>= "6.0.0"}
   "dune" {>= "1.11"}
   "minicli" {>= "5.0.0"}
-  "ocaml"
+  "ocaml" {>= "5.0.0"}
   "line_oriented" {>= "1.0.0"}
   "conf-rdkit" {>= "1"}
   "conf-python-3" {>= "1.0.0"}
