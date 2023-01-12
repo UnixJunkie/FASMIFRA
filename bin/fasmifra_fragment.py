@@ -110,8 +110,7 @@ def index_for_atom_type(atom_types_dict, atom_type):
     try:
         return atom_types_dict[atom_type]
     except KeyError:
-        # want indexes to start at 1; so the isotope number is
-        # always explicit in the fragments SMILES output
+        # indexes need to start at 1
         v = len(atom_types_dict) + 1
         atom_types_dict[atom_type] = v
         return v
@@ -163,17 +162,16 @@ def tag_cut_bonds(frag_weight, randomize, atom_types_dict, input_mol):
             k = a_k.GetIdx()
             a_k_t = type_atom(mol.GetAtomWithIdx(k))
             rw_mol.RemoveBond(j, k)
-            # we will replace this bond by -['*][''*]-
-            # ' and '' will be isotope numbers encoding the bond
-            # start and end atom types
+            # we will replace this bond by -[*:i][*:j]-
+            # i and j are integers encoding the bond start and end atom types
             start_o = rw_mol.AddAtom(Chem.Atom(0)) # wildcard atom has atomic number 0
             start_a = rw_mol.GetAtomWithIdx(start_o)
-            # encode attached atom's type with an isotope number
-            start_a.SetIsotope(index_for_atom_type(atom_types_dict, a_j_t))
+            # encode attached atom's type w/ an atom map number
+            start_a.SetAtomMapNum(index_for_atom_type(atom_types_dict, a_j_t))
             end_o = rw_mol.AddAtom(Chem.Atom(0)) # wildcard atom
             stop_o = rw_mol.GetAtomWithIdx(end_o)
             # encode attached atom's type
-            stop_o.SetIsotope(index_for_atom_type(atom_types_dict, a_k_t))
+            stop_o.SetAtomMapNum(index_for_atom_type(atom_types_dict, a_k_t))
             rw_mol.AddBond(j, start_o, Chem.BondType.SINGLE)
             rw_mol.AddBond(start_o, end_o, Chem.BondType.SINGLE)
             rw_mol.AddBond(end_o, k, Chem.BondType.SINGLE)
