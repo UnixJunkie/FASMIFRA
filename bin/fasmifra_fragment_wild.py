@@ -4,7 +4,7 @@
 # Tsuda laboratory, Tokyo University,
 # 5-1-5 Kashiwa-no-ha, Kashiwa-shi, Chiba-ken, 277-8561, Japan.
 #
-# A wilder molecular fragmenting scheme
+# Another molecular fragmenting scheme
 
 import argparse
 import random
@@ -94,7 +94,8 @@ def find_cuttable_bonds(mol, debug = False):
                 log_protected_bond(debug, name, b3)
     res = []
     for b in mol.GetBonds():
-        if ((not b.IsInRing()) and
+        if ((b.GetBondType() == rdkit.Chem.rdchem.BondType.SINGLE) and
+            (not b.IsInRing()) and
             (b.GetStereo() == rdkit.Chem.rdchem.BondStereo.STEREONONE) and
             (b.HasProp("protected") == 0)): # HasProp returns an int... :(
             res.append(b)
