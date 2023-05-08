@@ -9,8 +9,6 @@ doing training-set distribution matching.
 
 # Installing the software
 
-On Linux, you need python3-rdkit to be installed.
-
 For OCaml programmers, you can clone this repository
 then type 'make && make install'.
 Note that you need to have opam installed and configured.
@@ -20,6 +18,8 @@ For end-users:
 sudo apt install opam
 opam init
 eval `opam config env`
+pip3 install rdkit
+opam install --fake conf-rdkit
 opam install fasmifra
 ```
 
@@ -28,6 +28,8 @@ For programmer end-users, or if the opam package is not ready yet:
 sudo apt install opam
 opam init
 eval `opam config env`
+pip3 install rdkit
+opam install --fake conf-rdkit
 opam pin add fasmifra https://github.com/UnixJunkie/FASMIFRA.git
 ```
 
