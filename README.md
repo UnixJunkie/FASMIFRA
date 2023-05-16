@@ -19,7 +19,7 @@ Note that you need to have opam installed and configured.
 
 install.sh does something like this:
 ```bash
-sudo apt install -y opam
+(test -e /usr/local/bin/brew && brew install opam) || sudo apt install -y opam
 opam init -y
 pip3 install rdkit
 eval `opam config env`
