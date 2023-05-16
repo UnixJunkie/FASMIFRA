@@ -9,31 +9,25 @@ doing training-set distribution matching.
 
 # Installing the software
 
+run ./install.sh
+It should install FASMIFRA with all its dependencies automatically
+without requiring any user interaction.
+
 For OCaml programmers, you can clone this repository
 then type 'make && make install'.
 Note that you need to have opam installed and configured.
 
-For end-users:
+install.sh does something like this:
 ```bash
-sudo apt install opam
-opam init
-eval `opam config env`
+sudo apt install -y opam
+opam init -y
 pip3 install rdkit
-opam install --fake conf-rdkit
-opam install fasmifra
-```
-
-For programmer end-users, or if the opam package is not ready yet:
-```bash
-sudo apt install opam
-opam init
 eval `opam config env`
-pip3 install rdkit
 opam install --fake conf-rdkit
-opam pin add fasmifra https://github.com/UnixJunkie/FASMIFRA.git
+opam install -y fasmifra
+which fasmifra_fragment.py
+which fasmifra
 ```
-
-We are currently working on an automated self-installer; stay tuned.
 
 # Fragmenting molecules
 
