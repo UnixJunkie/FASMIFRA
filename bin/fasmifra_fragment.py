@@ -13,6 +13,7 @@ import sys
 import time
 
 from rdkit import Chem
+from rdkit.Chem import BRICS
 from rdkit.Chem import Descriptors
 from rdkit.Chem import RWMol
 from rdkit.Chem.AtomPairs import Pairs
@@ -126,6 +127,14 @@ def get_cut_bonds(frag_weight, mol):
     random.shuffle(cut_bonds_indexes)
     return cut_bonds_indexes[0:max_cuts]
 
+# use BRICS instead of my simple molecular fragmentation scheme
+def get_BRICS_bonds(mol):
+    res = []
+    for begin_end, _types in BRICS.FindBRICSBonds(mol):
+        i, j = begin_end
+        res.append(mol.GetBondBetweenAtoms(i, j).GetIdx())
+    return res
+
 def random_reorder_atoms(randomize, mol):
     if randomize:
         rand_order = list(range(mol.GetNumAtoms()))
@@ -136,10 +145,14 @@ def random_reorder_atoms(randomize, mol):
     else:
         return mol
 
-def tag_cut_bonds(frag_weight, randomize, atom_types_dict, input_mol):
+def tag_cut_bonds(use_brics, frag_weight, randomize, atom_types_dict, input_mol):
     name = get_name(input_mol)
     mol = random_reorder_atoms(randomize, input_mol)
-    to_cut = get_cut_bonds(frag_weight, mol)
+    to_cut = []
+    if use_brics:
+        to_cut = get_BRICS_bonds(mol)
+    else:
+        to_cut = get_cut_bonds(frag_weight, mol)
     if len(to_cut) == 0:
         # molecule too small: not fragmented
         # still, we output it so that input and output SMILES files can be
@@ -193,6 +206,8 @@ if __name__ == '__main__':
                         type = int, help = "RNG seed")
     parser.add_argument("-n", dest = "nb_passes", default = 1,
                         type = int, help = "number of fragmentation passes")
+    parser.add_argument('--brics', dest='use_brics', action='store_true', default=False,
+                        help = "use BRICS fragmentation")
     # 150 Da: D. Rognan's suggested max fragment weight
     parser.add_argument("-w", dest = "frag_weight", default = 150.0,
                         type = float, help = "fragment weight (default=150Da)")
@@ -207,6 +222,7 @@ if __name__ == '__main__':
     rng_seed = args.seed
     frag_weight = args.frag_weight
     randomize = True
+    use_brics = args.use_brics
     if rng_seed != -1:
         # only if the user asked for it, we make experiments repeatable
         random.seed(rng_seed)
@@ -217,7 +233,7 @@ if __name__ == '__main__':
     seen_types_dict = {}
     for name, mol in mol_supplier:
         for i in range(nb_passes):
-            tagged_bonds_smi, parent_name = tag_cut_bonds(frag_weight, randomize, seen_types_dict, mol)
+            tagged_bonds_smi, parent_name = tag_cut_bonds(use_brics, frag_weight, randomize, seen_types_dict, mol)
             if i == 0:
                 print("%s\t%s" %
                       (tagged_bonds_smi, parent_name), file=output)
