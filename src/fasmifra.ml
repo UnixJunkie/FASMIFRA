@@ -1,6 +1,6 @@
-(* Copyright (C) 2023, Francois Berenger
+(* Copyright (C) 2024, Francois Berenger
    Tsuda Laboratory,
-   Tokyo University,
+   The University of Tokyo,
    5-1-5 Kashiwa-no-ha, Kashiwa-shi, Chiba-ken, 277-8561, Japan.
 
    Ultra fast (Deep)SMILES molecular fragments assembler *)
@@ -50,10 +50,12 @@ let parse_paren_cut_bond s =
     let () = Log.fatal "Fasmifra.parse_paren_cut_bond: cannot parse '%s'" s in
     raise exn
 
+exception Too_many_rings
+
 let string_of_ring_closure c =
   if c > 99 then (* forbid triple digits ring closure *)
     (Log.fatal "Fasmifra.string_of_ring_closure: %d > 99" c;
-     exit 1)
+     raise Too_many_rings)
   else if c > 9 then
     (* a double digit ring closure in SMILES must be prefixed by % *)
     sprintf "%%%d" c
@@ -63,7 +65,7 @@ let string_of_ring_closure c =
 let fprintf_ring_closure out c =
   if c > 99 then (* forbid triple digits ring closure *)
     (Log.fatal "Fasmifra.fprintf_ring_closure: %d > 99" c;
-     exit 1)
+     raise Too_many_rings)
   else if c > 9 then
     fprintf out "%%%d" c
   else
@@ -372,20 +374,28 @@ let main () =
   Log.info "seed_frags: %d; attach_types: %d"
     (A.length seed_fragments) (Ht.length frags_ht);
   LO.with_out_file output_fn (fun out ->
-        match rng_style with
-        | Performance rng ->
-          for i = 1 to n do
-            let tokens = assemble rng seed_fragments frags_ht in
+      match rng_style with
+      | Performance rng ->
+        let i = ref 0 in
+        while !i < n do
+          let tokens = assemble rng seed_fragments frags_ht in
+          try
             fprintf_tokens out tokens;
-            fprintf out "\tgenmol_%d\n" i
-          done
-        | Repeatable seed_stream ->
-          for i = 1 to n do
-            let rng = Random.State.split seed_stream in
-            let tokens = assemble rng seed_fragments frags_ht in
+            fprintf out "\tgenmol_%d\n" !i;
+            incr i
+          with Too_many_rings -> () (* just skip it *)
+        done
+      | Repeatable seed_stream ->
+        let i = ref 0 in
+        while !i < n do
+          let rng = Random.State.split seed_stream in
+          let tokens = assemble rng seed_fragments frags_ht in
+          try
             fprintf_tokens out tokens;
-            fprintf out "\tgenmol_%d\n" i
-          done
+            fprintf out "\tgenmol_%d\n" !i;
+            incr i
+          with Too_many_rings -> () (* just skip it *)
+        done
     );
   let stop = Unix.gettimeofday () in
   let dt = stop -. start in
