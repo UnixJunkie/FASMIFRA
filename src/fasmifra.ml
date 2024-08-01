@@ -237,8 +237,8 @@ let rewrite_paren_cut_bond_smiles s =
 (* dump all fragments to opened file.
    REMARK: each fragment is a valid SMILES if cut bonds are not erased. *)
 let dump_seed_fragments
-    (output: out_channel) (frags: input_smi_token list list): unit =
-  L.iter (fun tokens ->
+    (output: out_channel) (frags: input_smi_token list array): unit =
+  A.iter (fun tokens ->
       L.iter (dump_smi_token output) tokens;
       output_char output '\n' (* terminate fragment *)
     ) frags
@@ -247,8 +247,8 @@ let dump_seed_fragments
 let dump_branch_fragments
     (output: out_channel)
     (cut_bond: input_smi_token)
-    (frags: input_smi_token list list): unit =
-  L.iter (fun tokens ->
+    (frags: input_smi_token list array): unit =
+  A.iter (fun tokens ->
       (* properly outputing a branch fragment requires
          that it is prefixed by the correct cut bond *)
       L.iter (dump_smi_token output) (cut_bond :: tokens);
@@ -270,10 +270,10 @@ let index_fragments maybe_out_fn named_smiles =
    | None -> ()
    | Some output_fn ->
      LO.with_out_file output_fn (fun out ->
-         dump_seed_fragments out !seed_frags;
+         dump_seed_fragments out seeds;
          Ht.iter (fun (i, j) branches ->
              dump_branch_fragments out (Cut_bond (i, j)) branches
-           ) frags_ht
+           ) ht
        )
   );
   (seeds, ht)
