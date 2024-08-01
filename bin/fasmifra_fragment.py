@@ -47,7 +47,8 @@ def get_stereo_center_indexes(m):
 
 def type_atom(a):
     # stereo chemistry is ignored for the moment
-    nb_pi_electrons = Pairs.Utils.NumPiElectrons(a)
+    #nb_pi_electrons = Pairs.Utils.NumPiElectrons(a) # old rdkit
+    nb_pi_electrons = Chem.GetNumPiElectrons(a)
     atom_num = a.GetAtomicNum()
     nbHA = nb_heavy_atom_neighbors(a)
     formal_charge = a.GetFormalCharge()
