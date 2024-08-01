@@ -236,14 +236,26 @@ let rewrite_paren_cut_bond_smiles s =
 
 (* dump all fragments to opened file.
    REMARK: each fragment is a valid SMILES if cut bonds are not erased. *)
-let dump_smi_fragment
-    (output: out_channel) (frags: (input_smi_token list) list): unit =
+let dump_seed_fragments
+    (output: out_channel) (frags: input_smi_token list list): unit =
   L.iter (fun tokens ->
       L.iter (dump_smi_token output) tokens;
       output_char output '\n' (* terminate fragment *)
     ) frags
 
-let index_fragments named_smiles =
+(* almost like dump_seed_fragments *)
+let dump_branch_fragments
+    (output: out_channel)
+    (cut_bond: input_smi_token)
+    (frags: input_smi_token list list): unit =
+  L.iter (fun tokens ->
+      (* properly outputing a branch fragment requires
+         that it is prefixed by the correct cut bond *)
+      L.iter (dump_smi_token output) (cut_bond :: tokens);
+      output_char output '\n' (* terminate fragment *)
+    ) frags
+
+let index_fragments maybe_out_fn named_smiles =
   let n = L.length named_smiles in
   let seed_frags = ref [] in
   let frags_ht = Ht.create n in
@@ -254,6 +266,16 @@ let index_fragments named_smiles =
     ) named_smiles;
   let seeds = A.of_list !seed_frags in
   let ht = Ht.map (fun _ij branches -> A.of_list branches) frags_ht in
+  (match maybe_out_fn with
+   | None -> ()
+   | Some output_fn ->
+     LO.with_out_file output_fn (fun out ->
+         dump_seed_fragments out !seed_frags;
+         Ht.iter (fun (i, j) branches ->
+             dump_branch_fragments out (Cut_bond (i, j)) branches
+           ) frags_ht
+       )
+  );
   (seeds, ht)
 
 let rev_renumber_ring_closures ht i tokens =
@@ -341,14 +363,14 @@ let cache_indexed_fragments force frags_fn seed_frags_frags_ht_pair =
   else
     Log.warn "cache file already exists (use -f to overwrite): %s" cache_fn
 
-let load_indexed_fragments force frags_fn =
+let load_indexed_fragments maybe_out_fn force frags_fn =
   let cache_fn = frags_fn ^ ".bin_cache" in
   if (not force) && Sys.file_exists cache_fn then
     let () = Log.info "reading indexed fragments from cache: %s" cache_fn in
     restore cache_fn
   else
     let input_frags = LO.map frags_fn parse_SMILES_line in
-    index_fragments input_frags
+    index_fragments maybe_out_fn input_frags
 
 let main () =
   let start = Unix.gettimeofday () in
@@ -364,6 +386,8 @@ let main () =
               -i <filename>: smiles fragments input file\n  \
               -o <filenams>: output file\n  \
               -n <int>: how many molecules to generate\n  \
+              [-of <filename>]: dump fragments to SMILES file \
+              (not necessarily canonical ones)\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
               [--seed <int>]: RNG seed\n  \
               [--deep-smiles]: input/output molecules in DeepSMILES\n  \
@@ -378,6 +402,7 @@ let main () =
     | Some seed -> Repeatable (BatRandom.State.make [|seed|]) in
   let input_frags_fn = CLI.get_string ["-i"] args in
   let output_fn = CLI.get_string ["-o"] args in
+  let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
   let force = CLI.get_set_bool ["-f"] args in
   let assemble =
     if CLI.get_set_bool ["--deep-smiles"] args then
@@ -387,7 +412,7 @@ let main () =
   CLI.finalize (); (* ------------ CLI parsing ---------------- *)
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
-    let res = load_indexed_fragments force input_frags_fn in
+    let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
     cache_indexed_fragments force input_frags_fn res;
     res in
   Log.info "seed_frags: %d; attach_types: %d"
