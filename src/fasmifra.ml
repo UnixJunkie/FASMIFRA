@@ -236,7 +236,7 @@ let rewrite_paren_cut_bond_smiles s =
 
 (* dump all fragments to opened file.
    REMARK: each fragment is a valid SMILES if cut bonds are not erased. *)
-let dump_fragment_smiles
+let dump_smi_fragment
     (output: out_channel) (frags: (input_smi_token list) list): unit =
   L.iter (fun tokens ->
       L.iter (dump_smi_token output) tokens;
