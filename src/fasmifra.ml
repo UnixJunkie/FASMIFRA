@@ -71,6 +71,7 @@ let fprintf_ring_closure out c =
   else
     fprintf out "%d" c
 
+(* for debugging *)
 let string_of_smi_token = function
   | Open_paren -> "("
   | Close_paren -> ")"
@@ -81,6 +82,15 @@ let string_of_smi_token = function
   | Ring_closure rc -> string_of_ring_closure rc
   | Bracket_atom x
   | Rest x -> x
+
+(* to dump fragments to file *)
+let dump_smi_token out = function
+  | Open_paren -> output_char out '('
+  | Close_paren -> output_char out ')'
+  | Cut_bond (i, j) -> fprintf out "[*:%d][*:%d]" i j
+  | Ring_closure rc -> fprintf_ring_closure out rc
+  | Bracket_atom x
+  | Rest x -> output_string out x
 
 (* for performance *)
 let fprintf_smi_token out = function
@@ -223,6 +233,15 @@ let rewrite_paren_cut_bond_smiles s =
          | Text t -> t
        ) (Str.bounded_full_split paren_cut_bond_regexp s 1024)
     )
+
+(* dump all fragments to opened file.
+   REMARK: each fragment is a valid SMILES if cut bonds are not erased. *)
+let dump_fragment_smiles
+    (output: out_channel) (frags: (input_smi_token list) list): unit =
+  L.iter (fun tokens ->
+      L.iter (dump_smi_token output) tokens;
+      output_char output '\n' (* terminate fragment *)
+    ) frags
 
 let index_fragments named_smiles =
   let n = L.length named_smiles in
