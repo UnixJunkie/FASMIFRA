@@ -23,8 +23,11 @@ def dict_has_key(d, k) -> bool:
 with open(input_fn) as input:
     smi2cansmi = {}
     cansmi2id = {}
+    count = 0
     for line in input.readlines():
         smi = line.strip()
+        # only one SMILES per input line allowed
+        assert(len(smi.split()) == 1)
         mol = Chem.MolFromSmiles(smi)
         cano_smi = Chem.MolToSmiles(mol)
         if dict_has_key(smi2cansmi, smi):
@@ -36,7 +39,13 @@ with open(input_fn) as input:
             smi2cansmi[smi] = cano_smi
         if not dict_has_key(cansmi2id, cano_smi):
             cansmi2id[cano_smi] = len(cansmi2id)
+        # how many frags were read in
+        count += 1
     # output created dictionary to stdout
     for smi, cano_smi in smi2cansmi.items():
         frag_id = cansmi2id[cano_smi]
         print('%s\t%s\t%d' % (smi, cano_smi, frag_id))
+    # user feedback
+    print('%s: %d SMILES; %d unique canoSMILES' % \
+          (input_fn, count, len(cansmi2id)),
+          file=sys.stderr)
