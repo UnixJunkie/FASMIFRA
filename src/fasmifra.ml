@@ -317,6 +317,30 @@ let assemble_smiles_fragments rng seeds branches =
   in
   loop [] seed_frag
 
+(* like assemble_smiles_fragments, but "Preserve Cut Bonds" (PCB).
+   To output generated molecules w/ cut bonds preserved; so that
+   generated molecules do not need to be fragmented later on *)
+let assemble_smiles_fragments_PCB rng seeds branches =
+  let frag_count = ref 0 in
+  let ht = Ht.create 97 in
+  let seed_frag =
+    let chosen = array_rand_elt rng seeds in
+    L.rev (rev_renumber_ring_closures ht frag_count chosen) in
+  let rec loop acc tokens = match tokens with
+    | [] -> L.rev acc
+    | x :: xs ->
+      match x with
+      | Cut_bond (i, j) ->
+        let possible_branches = Ht.find branches (i, j) in
+        let branch =
+          let chosen = array_rand_elt rng possible_branches in
+          (* preserve cut bond [x] here *)          
+          rev_renumber_ring_closures ht frag_count (x :: chosen) in
+        loop acc (L.rev_append branch xs)
+      | _  -> loop (x :: acc) xs
+  in
+  loop [] seed_frag
+
 (* almost copy/paste of assemble_smiles_fragments *)
 let assemble_deepsmiles_fragments rng seeds branches =
   let rec loop acc tokens = match tokens with
