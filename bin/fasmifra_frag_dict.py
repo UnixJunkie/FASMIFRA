@@ -1,4 +1,16 @@
 #!/usr/bin/env python3
+#
+# Copyright (C) 2024, Francois Berenger
+# Tsuda laboratory, Tokyo University,
+# 5-1-5 Kashiwa-no-ha, Kashiwa-shi, Chiba-ken, 277-8561, Japan.
+#
+# Read a SMILES fragments file, then output on stdout
+# the corresponding fragment dictionary.
+# Output lines are of the form:
+# '^<smiles:str>\t<cano_smiles:str>\t<frag_id:int>\n'
+# i.e. each SMILES fragment has its canonical SMILES computed
+# and each different canonical SMILES is assigned a new
+# fragment identifier.
 
 import rdkit, sys, typing
 from rdkit import Chem
