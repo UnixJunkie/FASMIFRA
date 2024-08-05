@@ -83,20 +83,14 @@ let string_of_smi_token = function
   | Bracket_atom x
   | Rest x -> x
 
-(* to dump fragments to file *)
-let dump_smi_token out = function
-  | Open_paren -> output_char out '('
-  | Close_paren -> output_char out ')'
-  | Cut_bond (i, j) -> fprintf out "[*:%d][*:%d]" i j
-  | Ring_closure rc -> fprintf_ring_closure out rc
-  | Bracket_atom x
-  | Rest x -> output_string out x
-
 (* for performance *)
 let fprintf_smi_token out = function
   | Open_paren -> output_char out '('
   | Close_paren -> output_char out ')'
-  | Cut_bond _ -> assert(false) (* should have been deleted earlier *)
+  | Cut_bond (i, j) ->
+    (* in some use cases, cut bonds are supposed to have been deleted by
+       assemble_smiles_fragments *)
+    fprintf out "[*:%d][*:%d]" i j
   | Ring_closure rc -> fprintf_ring_closure out rc
   | Bracket_atom x
   | Rest x -> output_string out x
@@ -237,22 +231,22 @@ let rewrite_paren_cut_bond_smiles s =
 (* dump all fragments to opened file.
    REMARK: each fragment is a valid SMILES if cut bonds are not erased. *)
 let dump_seed_fragments
-    (output: out_channel) (frags: input_smi_token list array): unit =
+    (out: out_channel) (frags: input_smi_token list array): unit =
   A.iter (fun tokens ->
-      L.iter (dump_smi_token output) tokens;
-      output_char output '\n' (* terminate fragment *)
+      fprintf_tokens out tokens;
+      output_char out '\n' (* terminate fragment *)
     ) frags
 
 (* almost like dump_seed_fragments *)
 let dump_branch_fragments
-    (output: out_channel)
+    (out: out_channel)
     (cut_bond: input_smi_token)
     (frags: input_smi_token list array): unit =
   A.iter (fun tokens ->
       (* properly outputing a branch fragment requires
          that it is prefixed by the correct cut bond *)
-      L.iter (dump_smi_token output) (cut_bond :: tokens);
-      output_char output '\n' (* terminate fragment *)
+      fprintf_tokens out (cut_bond :: tokens);
+      output_char out '\n' (* terminate fragment *)
     ) frags
 
 let index_fragments maybe_out_fn named_smiles =
@@ -431,15 +425,15 @@ let main () =
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
-  (* let maybe_output_PCB_fn = CLI.get_string_opt ["-opcb"] args in *)
-  (* let output_PCB_fn, output_PCB = match maybe_output_PCB_fn with *)
-  (*   | None -> ("/dev/null", false) *)
-  (*   | Some fn -> *)
-  (*     if use_deep_smiles then *)
-  (*       (Log.fatal "-opcb incompatible w/ --deep-smiles"; *)
-  (*        exit 1) *)
-  (*     else *)
-  (*       (fn, true) in *)
+  let maybe_output_PCB_fn = CLI.get_string_opt ["-opcb"] args in
+  let output_PCB_fn, output_PCB = match maybe_output_PCB_fn with
+    | None -> ("/dev/null", false)
+    | Some fn ->
+      if use_deep_smiles then
+        (Log.fatal "-opcb incompatible w/ --deep-smiles";
+         exit 1)
+      else
+        (fn, true) in
   let assemble =
     if use_deep_smiles then
       assemble_deepsmiles_fragments
@@ -453,20 +447,31 @@ let main () =
     res in
   Log.info "seed_frags: %d; attach_types: %d"
     (A.length seed_fragments) (Ht.length frags_ht);
-  let get_rng_state =
-    match rng_style with
+  let get_rng = match rng_style with
     | Performance -> (fun x -> x)
     | Repeatable -> (fun x -> Random.State.split x) in
   LO.with_out_file output_fn (fun out ->
-      let i = ref 0 in
-      while !i < n do
-        let tokens = assemble (get_rng_state rng) seed_fragments frags_ht in
-        try
-          fprintf_tokens out tokens;
-          fprintf out "\tgenmol_%d\n" !i;
-          incr i
-        with Too_many_rings -> () (* just skip it *)
-      done
+      LO.with_out_file output_PCB_fn (fun out_PCB ->
+          let i = ref 0 in
+          while !i < n do
+            let rng' = get_rng rng in
+            let mol_name = sprintf "\tgenmol_%d\n" !i in
+            try
+              (if output_PCB then
+                 let rng'' = Random.State.copy rng' in
+                 let tokens_PCB =
+                   assemble_smiles_fragments_PCB
+                     rng'' seed_fragments frags_ht in
+                 fprintf_tokens out_PCB tokens_PCB;
+                 output_string out_PCB mol_name
+              );
+              let tokens = assemble rng' seed_fragments frags_ht in
+              fprintf_tokens out tokens;
+              output_string out mol_name;
+              incr i
+            with Too_many_rings -> () (* just skip it *)
+          done
+        )
     );
   let stop = Unix.gettimeofday () in
   let dt = stop -. start in
