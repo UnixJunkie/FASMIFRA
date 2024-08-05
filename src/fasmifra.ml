@@ -357,8 +357,8 @@ let assemble_deepsmiles_fragments rng seeds branches =
   let seed_frag = array_rand_elt rng seeds in
   loop [] seed_frag
 
-type rng_style = Performance of BatRandom.State.t
-               | Repeatable of BatRandom.State.t
+type rng_style = Performance
+               | Repeatable
 
 let parse_SMILES_line line =
   try Scanf.sscanf line "%s@\t%s" (fun smiles name -> (smiles, name))
@@ -412,6 +412,8 @@ let main () =
               -n <int>: how many molecules to generate\n  \
               [-of <filename>]: dump fragments to SMILES file \
               (not necessarily canonical ones)\n  \
+              [-opcb <filename>]: output molecules to file \
+              w/ Preserved Cut Bonds (PCB)\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
               [--seed <int>]: RNG seed\n  \
               [--deep-smiles]: input/output molecules in DeepSMILES\n  \
@@ -421,15 +423,25 @@ let main () =
   let verbose = CLI.get_set_bool ["-v"] args in
   if verbose then Log.(set_log_level DEBUG);
   let n = CLI.get_int ["-n"] args in
-  let rng_style = match CLI.get_int_opt ["--seed"] args with
-    | None -> Performance (BatRandom.State.make_self_init ())
-    | Some seed -> Repeatable (BatRandom.State.make [|seed|]) in
+  let rng_style, rng = match CLI.get_int_opt ["--seed"] args with
+    | None -> (Performance, BatRandom.State.make_self_init ())
+    | Some seed -> (Repeatable, BatRandom.State.make [|seed|]) in
   let input_frags_fn = CLI.get_string ["-i"] args in
   let output_fn = CLI.get_string ["-o"] args in
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
   let force = CLI.get_set_bool ["-f"] args in
+  let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
+  (* let maybe_output_PCB_fn = CLI.get_string_opt ["-opcb"] args in *)
+  (* let output_PCB_fn, output_PCB = match maybe_output_PCB_fn with *)
+  (*   | None -> ("/dev/null", false) *)
+  (*   | Some fn -> *)
+  (*     if use_deep_smiles then *)
+  (*       (Log.fatal "-opcb incompatible w/ --deep-smiles"; *)
+  (*        exit 1) *)
+  (*     else *)
+  (*       (fn, true) in *)
   let assemble =
-    if CLI.get_set_bool ["--deep-smiles"] args then
+    if use_deep_smiles then
       assemble_deepsmiles_fragments
     else
       assemble_smiles_fragments in
@@ -441,29 +453,20 @@ let main () =
     res in
   Log.info "seed_frags: %d; attach_types: %d"
     (A.length seed_fragments) (Ht.length frags_ht);
+  let get_rng_state =
+    match rng_style with
+    | Performance -> (fun x -> x)
+    | Repeatable -> (fun x -> Random.State.split x) in
   LO.with_out_file output_fn (fun out ->
-      match rng_style with
-      | Performance rng ->
-        let i = ref 0 in
-        while !i < n do
-          let tokens = assemble rng seed_fragments frags_ht in
-          try
-            fprintf_tokens out tokens;
-            fprintf out "\tgenmol_%d\n" !i;
-            incr i
-          with Too_many_rings -> () (* just skip it *)
-        done
-      | Repeatable seed_stream ->
-        let i = ref 0 in
-        while !i < n do
-          let rng = Random.State.split seed_stream in
-          let tokens = assemble rng seed_fragments frags_ht in
-          try
-            fprintf_tokens out tokens;
-            fprintf out "\tgenmol_%d\n" !i;
-            incr i
-          with Too_many_rings -> () (* just skip it *)
-        done
+      let i = ref 0 in
+      while !i < n do
+        let tokens = assemble (get_rng_state rng) seed_fragments frags_ht in
+        try
+          fprintf_tokens out tokens;
+          fprintf out "\tgenmol_%d\n" !i;
+          incr i
+        with Too_many_rings -> () (* just skip it *)
+      done
     );
   let stop = Unix.gettimeofday () in
   let dt = stop -. start in
