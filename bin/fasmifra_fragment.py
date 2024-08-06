@@ -4,7 +4,7 @@
 # Tsuda laboratory, Tokyo University,
 # 5-1-5 Kashiwa-no-ha, Kashiwa-shi, Chiba-ken, 277-8561, Japan.
 #
-# Ultra-fast generator of only valid molecules using (Deep)SMILES fragments
+# Fragment molecules by annotating cut bonds
 
 import argparse
 import random
@@ -234,7 +234,11 @@ if __name__ == '__main__':
     seen_types_dict = {}
     for name, mol in mol_supplier:
         for i in range(nb_passes):
-            tagged_bonds_smi, parent_name = tag_cut_bonds(use_brics, frag_weight, randomize, seen_types_dict, mol)
+            tagged_bonds_smi, parent_name = tag_cut_bonds(use_brics,
+                                                          frag_weight,
+                                                          randomize,
+                                                          seen_types_dict,
+                                                          mol)
             if i == 0:
                 print("%s\t%s" %
                       (tagged_bonds_smi, parent_name), file=output)
