@@ -33,9 +33,19 @@ def RobustSmilesMolSupplier(filename):
 def nb_heavy_atom_neighbors(a):
     res = 0
     for neighb in a.GetNeighbors():
-        if neighb.GetAtomicNum() != 1:
+        if neighb.GetAtomicNum() > 1:
             res += 1
     return res
+
+# encode by an integer what kind of ring this atom is involved in
+def ring_membership(a):
+    if a.IsInRing():
+        if a.GetIsAromatic():
+            return 2 # in aromatic ring
+        else:
+            return 1 # in aliphatic ring
+    else:
+        return 0 # not in ring
 
 def get_stereo_center_indexes(m):
     res = {}
@@ -45,7 +55,8 @@ def get_stereo_center_indexes(m):
         res[i] = True
     return res
 
-def type_atom(a):
+# OLD: was used until 06/08/2024
+def type_atom_OLD(a):
     # stereo chemistry is ignored for the moment
     #nb_pi_electrons = Pairs.Utils.NumPiElectrons(a) # old rdkit
     nb_pi_electrons = Chem.GetNumPiElectrons(a)
@@ -55,6 +66,15 @@ def type_atom(a):
     # make this easy to parse / unambiguous
     res = "%d,%d,%d,%d" % (nb_pi_electrons, atom_num, nbHA, formal_charge)
     return res
+
+# new and more precise atom typing scheme; stereo chemistry is ignored
+def type_atom(a):
+    return ("%d,%d,%d,%d,%d,%d" %  (a.GetAtomicNum(),
+                                    nb_heavy_atom_neighbors(a),
+                                    a.GetTotalNumHs(),
+                                    Chem.GetNumPiElectrons(a),
+                                    a.GetFormalCharge(),
+                                    ring_membership(a)))
 
 def log_protected_bond(debug, name, b):
     if debug:
