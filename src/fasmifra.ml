@@ -463,5 +463,3 @@ let main () =
   Log.info "rate: %.2f molecule/s" ((float n) /. dt)
 
 let () = main ()
-
-(* FBR: add a sed script in bin/ to remove cut bonds from SMILES strings *)
