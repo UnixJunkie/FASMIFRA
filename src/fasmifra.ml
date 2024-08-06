@@ -416,9 +416,6 @@ let main () =
   let verbose = CLI.get_set_bool ["-v"] args in
   if verbose then Log.(set_log_level DEBUG);
   let n = CLI.get_int ["-n"] args in
-  let rng_style, rng = match CLI.get_int_opt ["-s";"--seed"] args with
-    | None -> (Performance, BatRandom.State.make_self_init ())
-    | Some seed -> (Repeatable, BatRandom.State.make [|seed|]) in
   let input_frags_fn = CLI.get_string ["-i"] args in
   let output_fn = CLI.get_string ["-o"] args in
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
@@ -437,6 +434,11 @@ let main () =
       assemble_smiles_fragments_PCB
     else
       assemble_smiles_fragments in
+  let get_rng, rng = match CLI.get_int_opt ["-s";"--seed"] args with
+    | None -> ((fun x -> x),
+               BatRandom.State.make_self_init ())
+    | Some seed -> ((fun x -> Random.State.split x),
+                    BatRandom.State.make [|seed|]) in
   CLI.finalize (); (* ------------ CLI parsing ---------------- *)
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
@@ -445,9 +447,6 @@ let main () =
     res in
   Log.info "seed_frags: %d; attach_types: %d"
     (A.length seed_fragments) (Ht.length frags_ht);
-  let get_rng = match rng_style with
-    | Performance -> (fun x -> x)
-    | Repeatable -> (fun x -> Random.State.split x) in
   LO.with_out_file output_fn (fun out ->
       let i = ref 0 in
       while !i < n do
