@@ -8,6 +8,7 @@ license: "GPL-3.0-or-later"
 build: ["dune" "build" "-p" name "-j" jobs]
 install: [
   ["cp" "bin/fasmifra_fragment.py" "%{bin}%/fasmifra_fragment.py"]
+  ["cp" "bin/fasmifra_rm_cut_bonds.sh" "%{bin}%/fasmifra_rm_cut_bonds.sh"]
 ]
 depends: [
   "base-unix"
