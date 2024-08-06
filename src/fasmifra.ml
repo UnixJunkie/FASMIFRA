@@ -328,9 +328,9 @@ let assemble_smiles_fragments_PCB rng seeds branches =
         let possible_branches = Ht.find branches (i, j) in
         let branch =
           let chosen = array_rand_elt rng possible_branches in
-          (* preserve cut bond [x] here *)          
-          rev_renumber_ring_closures ht frag_count (x :: chosen) in
-        loop acc (L.rev_append branch xs)
+          rev_renumber_ring_closures ht frag_count chosen in
+        (* preserve cut bond [x] here *)
+        loop (x :: acc) (L.rev_append branch xs)
       | _  -> loop (x :: acc) xs
   in
   loop [] seed_frag
