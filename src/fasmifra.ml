@@ -406,10 +406,9 @@ let main () =
               -n <int>: how many molecules to generate\n  \
               [-of <filename>]: dump fragments to SMILES file \
               (not necessarily canonical ones)\n  \
-              [-opcb <filename>]: output molecules to file \
-              w/ Preserved Cut Bonds (PCB)\n  \
+              [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
-              [--seed <int>]: RNG seed\n  \
+              [-s|--seed <int>]: RNG seed (for repeatable results)\n  \
               [--deep-smiles]: input/output molecules in DeepSMILES\n  \
               no-rings format\n"
        Sys.argv.(0);
@@ -417,7 +416,7 @@ let main () =
   let verbose = CLI.get_set_bool ["-v"] args in
   if verbose then Log.(set_log_level DEBUG);
   let n = CLI.get_int ["-n"] args in
-  let rng_style, rng = match CLI.get_int_opt ["--seed"] args with
+  let rng_style, rng = match CLI.get_int_opt ["-s";"--seed"] args with
     | None -> (Performance, BatRandom.State.make_self_init ())
     | Some seed -> (Repeatable, BatRandom.State.make [|seed|]) in
   let input_frags_fn = CLI.get_string ["-i"] args in
@@ -425,18 +424,17 @@ let main () =
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
-  let maybe_output_PCB_fn = CLI.get_string_opt ["-opcb"] args in
-  let output_PCB_fn, output_PCB = match maybe_output_PCB_fn with
-    | None -> ("/dev/null", false)
-    | Some fn ->
-      if use_deep_smiles then
-        (Log.fatal "-opcb incompatible w/ --deep-smiles";
-         exit 1)
-      else
-        (fn, true) in
+  let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
   let assemble =
     if use_deep_smiles then
-      assemble_deepsmiles_fragments
+      if preserve_cut_bonds then
+        (Log.fatal "PCB mode for DeepSMILES unsupported yet";
+         exit 1)
+      else
+        assemble_deepsmiles_fragments
+    else (* use SMILES *)
+    if preserve_cut_bonds then
+      assemble_smiles_fragments_PCB
     else
       assemble_smiles_fragments in
   CLI.finalize (); (* ------------ CLI parsing ---------------- *)
@@ -451,30 +449,20 @@ let main () =
     | Performance -> (fun x -> x)
     | Repeatable -> (fun x -> Random.State.split x) in
   LO.with_out_file output_fn (fun out ->
-      LO.with_out_file output_PCB_fn (fun out_PCB ->
-          let i = ref 0 in
-          while !i < n do
-            let rng' = get_rng rng in
-            let mol_name = sprintf "\tgenmol_%d\n" !i in
-            try
-              (if output_PCB then
-                 let rng'' = Random.State.copy rng' in
-                 let tokens_PCB =
-                   assemble_smiles_fragments_PCB
-                     rng'' seed_fragments frags_ht in
-                 fprintf_tokens out_PCB tokens_PCB;
-                 output_string out_PCB mol_name
-              );
-              let tokens = assemble rng' seed_fragments frags_ht in
-              fprintf_tokens out tokens;
-              output_string out mol_name;
-              incr i
-            with Too_many_rings -> () (* just skip it *)
-          done
-        )
+      let i = ref 0 in
+      while !i < n do
+        try
+          let tokens = assemble (get_rng rng) seed_fragments frags_ht in
+          fprintf_tokens out tokens;
+          fprintf out "\tgenmol_%d\n" !i;
+          incr i
+        with Too_many_rings -> () (* skip it *)
+      done
     );
   let stop = Unix.gettimeofday () in
   let dt = stop -. start in
   Log.info "rate: %.2f molecule/s" ((float n) /. dt)
 
 let () = main ()
+
+(* FBR: add a sed script in bin/ to remove cut bonds from SMILES strings *)
