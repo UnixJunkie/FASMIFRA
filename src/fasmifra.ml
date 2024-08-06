@@ -401,14 +401,17 @@ let main () =
   if argc = 1 then
     (eprintf "usage:\n  \
               %s\n  \
-              -i <filename>: smiles fragments input file\n  \
-              -o <filenams>: output file\n  \
-              -n <int>: how many molecules to generate\n  \
-              [-of <filename>]: dump fragments to SMILES file \
+              -i <filename>: input SMILES file\n  \
+              (molecules w/ annotated cut bonds as output by \n  \
+              fasmifra_fragment.py)\n  \
+              -o <filename>: output file for generated molecules\n  \
+              -n <int>: number of molecules to generate\n  \
+              [-of <filename>]: output fragments to SMILES file\n  \
               (not necessarily canonical ones)\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
-              [-s|--seed <int>]: RNG seed (for repeatable results)\n  \
+              [-s|--seed <int>]: RNG seed (for repeatable results\n  \
+              w/ same input file)\n  \
               [--deep-smiles]: input/output molecules in DeepSMILES\n  \
               no-rings format\n"
        Sys.argv.(0);
