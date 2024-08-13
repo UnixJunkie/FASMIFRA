@@ -390,6 +390,21 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
     let input_frags = LO.map frags_fn parse_SMILES_line in
     index_fragments maybe_out_fn input_frags
 
+(* an arbitrarily small float *)
+let epsilon = 0.0000000001
+let almost_one = 1.0 -. epsilon
+let pi = 4.0 *. (atan 1.0)
+let two_pi = 2.0 *. pi
+
+(* [gauss mu sigma] get one float from the normal distribution
+   with mean=mu and stddev=sigma
+   a = cos(2*pi*x) * sqrt(-2*log(1-y))
+   b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below) *)
+let gauss mu sigma =
+  mu +. (sigma *.
+         (cos (two_pi *. (Random.float almost_one)) *.
+          sqrt (-2.0 *. log (1.0 -. (Random.float almost_one)))))
+
 let main () =
   let start = Unix.gettimeofday () in
   (* Logger ---------------------------------------------------------------- *)
