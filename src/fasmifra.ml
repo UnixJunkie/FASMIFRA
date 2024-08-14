@@ -409,6 +409,19 @@ let gauss dist =
               (cos (two_pi *. (Random.float almost_one)) *.
                sqrt (-2.0 *. log (1.0 -. (Random.float almost_one)))))
 
+(* formulas (4) and (5) in p. 1160 of
+ * "Thompson Sampling-An Efficient Method for Searching Ultralarge Synthesis
+ * on Demand Databases"; https://doi.org/10.1021/acs.jcim.3c01790
+ * [d_t]: distribution for fragment i at time t
+ * [s2]: global variance for all fragments (initial estimate)
+ * [x_t]: observation for fragment i at t
+ * returns the updated distribution for fragment i at t+1 *)
+let update_dist d_t s2 x_t =
+  let s2_t = d_t.sigma *. d_t.sigma in
+  let denom = s2_t +. s2 in
+  { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
+    sigma = (s2_t *. s2) /. denom }
+
 (* load in a file created by fasmifra_frag_dict.py *)
 let load_fragments_dict fn =
   let n = LO.count fn in
