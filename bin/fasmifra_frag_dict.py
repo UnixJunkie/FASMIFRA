@@ -44,7 +44,7 @@ with open(input_fn) as input:
     # output created dictionary to stdout
     # mean and stddev columns will be used by Thompson sampling
     # they are all NaNs initially
-    print('#smi\tcano_smi\tid\tmean\tstddev') # format header line
+    print('#smi\tcan_smi\tid\tmean\tstddev') # format header line
     for smi, cano_smi in smi2cansmi.items():
         frag_id = cansmi2id[cano_smi]
         print('%s\t%s\t%d\tnan\tnan' % (smi, cano_smi, frag_id))
