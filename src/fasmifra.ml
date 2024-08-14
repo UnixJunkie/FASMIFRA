@@ -396,14 +396,41 @@ let almost_one = 1.0 -. epsilon
 let pi = 4.0 *. (atan 1.0)
 let two_pi = 2.0 *. pi
 
+type distribution = { mu: float;
+                      sigma: float }
+
 (* [gauss mu sigma] get one float from the normal distribution
    with mean=mu and stddev=sigma
    a = cos(2*pi*x) * sqrt(-2*log(1-y))
-   b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below) *)
-let gauss mu sigma =
-  mu +. (sigma *.
-         (cos (two_pi *. (Random.float almost_one)) *.
-          sqrt (-2.0 *. log (1.0 -. (Random.float almost_one)))))
+   b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below)
+   cf. Python's documentation of random.gauss function *)
+let gauss dist =
+  dist.mu +. (dist.sigma *.
+              (cos (two_pi *. (Random.float almost_one)) *.
+               sqrt (-2.0 *. log (1.0 -. (Random.float almost_one)))))
+
+(* load in a file created by fasmifra_frag_dict.py *)
+let load_fragments_dict fn =
+  let n = LO.count fn in
+  let smi2id = Ht.create n in
+  let dists = Array.make n { mu = nan; sigma = nan} in
+  LO.with_in_file fn (fun input ->
+      let _header = input_line input in
+      while true do
+        let line = input_line input in
+        try Scanf.sscanf line "%s@\t%s@\t%d\t%f\t%f"
+              (fun smi _can_smi id mu sigma ->
+                 (* the canonical SMILES is unused at run-time; *)
+                 (* it is useful to check the fragments dictionary *)
+                 (* is correct though *)
+                 Ht.add smi2id smi id;
+                 dists.(id) <- { mu; sigma })
+        with exn ->
+          (Log.fatal "Fasmifra.load_fragments_dict: cannot parse: %s" line;
+           raise exn)
+      done
+    );
+  (smi2id, dists)
 
 let main () =
   let start = Unix.gettimeofday () in
