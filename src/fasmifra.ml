@@ -229,6 +229,17 @@ let rewrite_paren_cut_bond_smiles s =
        ) (Str.bounded_full_split paren_cut_bond_regexp s 1024)
     )
 
+(* list all fragments in a SMILES w/ annotated cut bonds *)
+let list_fragments smi =
+  let seed_frags = ref [] in
+  let frags_ht = Ht.create 11 in
+  let rewritten = rewrite_paren_cut_bond_smiles smi in
+  let tokens = tokenize_full rewritten in
+  fragment seed_frags frags_ht tokens;
+  Ht.fold (fun _i_j frags acc ->
+      L.rev_append frags acc
+    ) frags_ht !seed_frags
+
 (* dump all fragments to opened file.
    REMARK: each fragment is a valid SMILES if cut bonds are not erased. *)
 let dump_seed_fragments
@@ -414,8 +425,9 @@ let _ = assert(almost_one < 1.0) (* check it works *)
 let pi = 4.0 *. (atan 1.0)
 let two_pi = 2.0 *. pi
 
-type distribution = { mu: float;
-                      sigma: float }
+(* a Gaussian distribution *)
+type dist = { mu: float;
+              sigma: float }
 
 let square x =
   x *. x
@@ -440,7 +452,7 @@ let gauss rng dist =
  * [s2]: global variance for all fragments (initial estimate)
  * [x_t]: observation for fragment i at t
  * returns the updated distribution for fragment i at t+1 *)
-let update_dist d_t s2 x_t =
+let update_gaussian d_t s2 x_t =
   let s2_t = d_t.sigma *. d_t.sigma in
   let denom = s2_t +. s2 in
   { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
@@ -512,6 +524,12 @@ let load_fragments_dict maybe_init_dist fn =
       done
     );
   (smi2can_smi_id, dists)
+
+(* update the Gaussian score distribution for each fragment *)
+let update_gaussians _smi2can_smi_id _dists smi_name_scores: unit =
+  L.iter (fun (_smi, _name, _score) ->
+      failwith "FBR: TODO"
+    ) smi_name_scores
 
 let main () =
   let start = Unix.gettimeofday () in
