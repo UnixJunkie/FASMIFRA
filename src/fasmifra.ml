@@ -454,7 +454,7 @@ let num_ids_in_frags_dict fn =
 
 (* load in a file created by fasmifra_frag_dict.py *)
 let load_fragments_dict maybe_init_dist fn =
-  let n = LO.count fn in
+  let n = num_ids_in_frags_dict fn in
   let smi2can_smi_id = Ht.create n in
   let use_global_dist, init_dist = match maybe_init_dist with
     | None ->
@@ -464,7 +464,6 @@ let load_fragments_dict maybe_init_dist fn =
       (assert (not (Float.is_nan x.mu) &&
                not (Float.is_nan x.sigma));
        (true, x)) in
-  (* FBR: !!! the number of unique ids must be read from the dict file !!! *)
   let dists = Array.make n { mu = nan; sigma = nan} in
   LO.with_in_file fn (fun input ->
       let header = input_line input in
