@@ -12,6 +12,7 @@ module Buff = Buffer
 module CLI = Minicli.CLI
 module Fn = Filename
 module Ht = BatHashtbl
+module ISet = BatSet.Int
 module L = BatList
 module LO = Line_oriented
 module Log = Dolog.Log
@@ -426,6 +427,29 @@ let update_dist d_t s2 x_t =
  * and a unique identifier *)
 type can_smi_id = { can_smi: string;
                     id: int }
+
+(* count the number of unique fragment ids in [fn] *)
+let num_ids_in_frags_dict fn =
+  let lines = LO.lines_of_file fn in
+  match lines with
+  | [] -> assert false
+  | header :: other_lines ->
+    (* enforce expected format *)
+    assert(header = "smi\tcan_smi\tid\tmean\tstddev");
+    let ids =
+      L.fold_left (fun acc line ->
+          try Scanf.sscanf line "%s@\t%s@\t%d\t%f\t%f"
+                (fun _smi _can_smi id _mu _sigma ->
+                   ISet.add id acc)
+          with exn ->
+            (Log.fatal "Fasmifra.load_frag_ids_from_frags_dict: \
+                        cannot parse: %s" line;
+             raise exn)
+        ) ISet.empty other_lines in
+    assert(ISet.min_elt ids = 0);
+    let n = ISet.cardinal ids in
+    assert(ISet.max_elt ids = n - 1);
+    n
 
 (* load in a file created by fasmifra_frag_dict.py *)
 let load_fragments_dict maybe_init_dist fn =
