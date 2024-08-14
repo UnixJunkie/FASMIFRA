@@ -282,10 +282,13 @@ let rev_renumber_ring_closures ht i tokens =
   incr i;
   res
 
+(* uniform random fragment sampling policy *)
 let array_rand_elt rng a =
   let n = A.length a in
   let i = BatRandom.State.int rng n in
   Array.unsafe_get a i
+
+(* FBR: we need the thompson_sample_max policy for maximization *)
 
 let assemble_smiles_fragments rng seeds branches =
   let frag_count = ref 0 in
@@ -391,9 +394,11 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
     let input_frags = LO.map frags_fn parse_SMILES_line in
     index_fragments maybe_out_fn input_frags
 
-(* an arbitrarily small float *)
-let epsilon = 0.0000000001
+(* apparently, the smallest acceptable float to observably
+   decrease 1.0 w/ ocaml-5.1.0 on a x86_64 CPU *)
+let epsilon = 0.0000000000000001
 let almost_one = 1.0 -. epsilon
+let _ = assert(almost_one < 1.0) (* check it works *)
 let pi = 4.0 *. (atan 1.0)
 let two_pi = 2.0 *. pi
 
@@ -405,10 +410,10 @@ type distribution = { mu: float;
    a = cos(2*pi*x) * sqrt(-2*log(1-y))
    b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below)
    cf. Python's documentation of random.gauss function *)
-let gauss dist =
+let gauss rng dist =
   dist.mu +. (dist.sigma *.
-              (cos (two_pi *. (Random.float almost_one)) *.
-               sqrt (-2.0 *. log (1.0 -. (Random.float almost_one)))))
+              (cos (two_pi *. (Random.State.float rng almost_one)) *.
+               sqrt (-2.0 *. log (1.0 -. (Random.State.float rng almost_one)))))
 
 (* formulas (4) and (5) in p. 1160 of
  * "Thompson Sampling-An Efficient Method for Searching Ultralarge Synthesis
@@ -512,6 +517,8 @@ let main () =
               (initial guess)\n  \
               [-of <filename>]: output fragments to SMILES file\n  \
               (not necessarily canonical ones)\n  \
+              [-if <filename>]: load fragments dictionary file\n  \
+              (first run must also use -mu and -sigma)\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
               [-s|--seed <int>]: RNG seed (for repeatable results\n  \
@@ -526,11 +533,12 @@ let main () =
   let input_frags_fn = CLI.get_string ["-i"] args in
   let output_fn = CLI.get_string ["-o"] args in
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
+  let maybe_frags_dict_fn = CLI.get_string_opt ["-if"] args in
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
-  let _maybe_mu = CLI.get_float_opt ["-mu"] args in
-  let _maybe_sigma = CLI.get_float_opt ["-sigma"] args in
+  let maybe_mu = CLI.get_float_opt ["-mu"] args in
+  let maybe_sigma = CLI.get_float_opt ["-sigma"] args in
   let assemble =
     if use_deep_smiles then
       if preserve_cut_bonds then
@@ -549,6 +557,13 @@ let main () =
     | Some seed -> ((fun x -> Random.State.split x),
                     BatRandom.State.make [|seed|]) in
   CLI.finalize (); (* ------------ CLI parsing ---------------- *)
+  let maybe_init_dist = match (maybe_mu, maybe_sigma) with
+    | (Some mu, Some sigma) -> Some { mu; sigma }
+    | _ -> None in
+  let _smi2can_smi_id, _gaussians =
+    match maybe_frags_dict_fn with
+    | None -> (Ht.create 0, [||])
+    | Some fn -> load_fragments_dict maybe_init_dist fn in
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
     let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
