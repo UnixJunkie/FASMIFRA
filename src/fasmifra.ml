@@ -363,6 +363,21 @@ let parse_SMILES_line line =
   with exn -> (Log.fatal "parse_SMILES_line: malformed line: '%s'" line;
                raise exn)
 
+let parse_score_line line =
+  try Scanf.sscanf line "%s@\t%f" (fun name score -> (name, score))
+  with exn -> (Log.fatal "parse_score_line: malformed line: '%s'" line;
+               raise exn)
+
+(* zip named SMILES with named scores *)
+let load_scores (smi_fn: string) (scores_fn: string):
+  (string * string * float) list =
+  let smi_names = LO.map smi_fn parse_SMILES_line in
+  let name_scores = LO.map scores_fn parse_score_line in
+  L.map2 (fun (smi, name) (name', score) ->
+      assert(name = name');
+      (smi, name, score)
+    ) smi_names name_scores
+
 (* marshal x to file *)
 let save fn x =
   LO.with_out_file fn (fun out ->
