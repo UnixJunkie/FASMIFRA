@@ -394,10 +394,7 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
     let input_frags = LO.map frags_fn parse_SMILES_line in
     index_fragments maybe_out_fn input_frags
 
-(* apparently, the smallest acceptable float to observably
-   decrease 1.0 w/ ocaml-5.1.0 on a x86_64 CPU *)
-let epsilon = 0.0000000000000001
-let almost_one = 1.0 -. epsilon
+let almost_one = Float.pred 1.0
 let _ = assert(almost_one < 1.0) (* check it works *)
 let pi = 4.0 *. (atan 1.0)
 let two_pi = 2.0 *. pi
