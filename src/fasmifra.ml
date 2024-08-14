@@ -449,6 +449,7 @@ let num_ids_in_frags_dict fn =
     assert(ISet.min_elt ids = 0);
     let n = ISet.cardinal ids in
     assert(ISet.max_elt ids = n - 1);
+    Log.info "%s: %d unique fragments" fn n;
     n
 
 (* load in a file created by fasmifra_frag_dict.py *)
