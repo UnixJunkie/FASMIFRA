@@ -42,9 +42,12 @@ with open(input_fn) as input:
         # how many frags were read in
         count += 1
     # output created dictionary to stdout
+    # mean and stddev columns will be used by Thompson sampling
+    # they are all NaNs initially
+    print('#smi\tcano_smi\tid\tmean\tstddev') # format header line
     for smi, cano_smi in smi2cansmi.items():
         frag_id = cansmi2id[cano_smi]
-        print('%s\t%s\t%d' % (smi, cano_smi, frag_id))
+        print('%s\t%s\t%d\tnan\tnan' % (smi, cano_smi, frag_id))
     # user feedback
     print('%s: %d SMILES; %d unique canoSMILES' % \
           (input_fn, count, len(cansmi2id)),
