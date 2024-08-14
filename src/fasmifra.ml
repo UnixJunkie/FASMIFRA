@@ -405,6 +405,12 @@ let two_pi = 2.0 *. pi
 type distribution = { mu: float;
                       sigma: float }
 
+let square x =
+  x *. x
+
+let stddev (mean: float) (l: float list): float =
+  sqrt (L.favg (L.map (fun x -> square (x -. mean)) l))
+
 (* [gauss mu sigma] get one float from the normal distribution
    with mean=mu and stddev=sigma
    a = cos(2*pi*x) * sqrt(-2*log(1-y))
