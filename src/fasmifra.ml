@@ -422,28 +422,49 @@ let update_dist d_t s2 x_t =
   { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
     sigma = (s2_t *. s2) /. denom }
 
+(* each known SMILES fragment is attache to a canonical SMILES
+ * and a unique identifier *)
+type can_smi_id = { can_smi: string;
+                    id: int }
+
 (* load in a file created by fasmifra_frag_dict.py *)
-let load_fragments_dict fn =
+let load_fragments_dict maybe_init_dist fn =
   let n = LO.count fn in
-  let smi2id = Ht.create n in
+  let smi2can_smi_id = Ht.create n in
+  let use_global_dist, init_dist = match maybe_init_dist with
+    | None ->
+      (* each line is supposed to have non NaN mu and sigma then *)
+      (false, { mu = nan; sigma = nan})
+    | Some x ->
+      (assert (not (Float.is_nan x.mu) &&
+               not (Float.is_nan x.sigma));
+       (true, x)) in
+  (* FBR: !!! the number of unique ids must be read from the dict file !!! *)
   let dists = Array.make n { mu = nan; sigma = nan} in
   LO.with_in_file fn (fun input ->
-      let _header = input_line input in
+      let header = input_line input in
+      (* enforce expected format *)
+      assert(header = "smi\tcan_smi\tid\tmean\tstddev");
       while true do
         let line = input_line input in
         try Scanf.sscanf line "%s@\t%s@\t%d\t%f\t%f"
-              (fun smi _can_smi id mu sigma ->
-                 (* the canonical SMILES is unused at run-time; *)
-                 (* it is useful to check the fragments dictionary *)
-                 (* is correct though *)
-                 Ht.add smi2id smi id;
-                 dists.(id) <- { mu; sigma })
+              (fun smi can_smi id mu sigma ->
+                 (* the canonical SMILES is unused at run-time
+                  * (but useful to check the fragments dictionary)
+                  * we keep it so that we can output a complete dictionary *)
+                 Ht.add smi2can_smi_id smi { can_smi; id };
+                 if Float.is_nan mu || Float.is_nan sigma then
+                   (assert use_global_dist;
+                    dists.(id) <- init_dist)
+                 else
+                   dists.(id) <- { mu; sigma }
+              )
         with exn ->
           (Log.fatal "Fasmifra.load_fragments_dict: cannot parse: %s" line;
            raise exn)
       done
     );
-  (smi2id, dists)
+  (smi2can_smi_id, dists)
 
 let main () =
   let start = Unix.gettimeofday () in
@@ -461,6 +482,10 @@ let main () =
               fasmifra_fragment.py)\n  \
               -o <filename>: output file for generated molecules\n  \
               -n <int>: number of molecules to generate\n  \
+              [-mu <float>]: average score for all fragments\n  \
+              (initial guess)\n  \
+              [-sigma <float>]: standard deviation for all fragments\n  \
+              (initial guess)\n  \
               [-of <filename>]: output fragments to SMILES file\n  \
               (not necessarily canonical ones)\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
@@ -480,6 +505,8 @@ let main () =
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
+  let _maybe_mu = CLI.get_float_opt ["-mu"] args in
+  let _maybe_sigma = CLI.get_float_opt ["-sigma"] args in
   let assemble =
     if use_deep_smiles then
       if preserve_cut_bonds then
