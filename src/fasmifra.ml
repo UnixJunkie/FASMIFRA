@@ -122,18 +122,22 @@ let tokenize_full (s: string): input_smi_token list =
         | Delim _ -> assert(false) (* parens_regexp would be wrong then *)
         | Text a ->
           L.map Str.(function
-              | Delim cut_bond_str -> [[[parse_cut_bond cut_bond_str]]]
+              | Delim cut_bond_str ->
+                [[[parse_cut_bond cut_bond_str]]]
               | Text b ->
                 L.map Str.(function
-                    | Delim bracket_atom_str -> [[Bracket_atom bracket_atom_str]]
+                    | Delim bracket_atom_str ->
+                      [[Bracket_atom bracket_atom_str]]
                     | Text c ->
                       L.map Str.(function
                           | Delim double_digit_rc ->
-                            [Ring_closure (parse_double_digit_ring_closure double_digit_rc)]
+                            [Ring_closure (parse_double_digit_ring_closure
+                                             double_digit_rc)]
                           | Text d ->
                             L.map Str.(function
                                 | Delim single_digit_rc ->
-                                  Ring_closure (parse_single_digit_ring_closure single_digit_rc)
+                                  Ring_closure (parse_single_digit_ring_closure
+                                                  single_digit_rc)
                                 | Text e -> Rest e
                               )
                               (Str.bounded_full_split single_digit_regexp d 1024)
@@ -559,6 +563,9 @@ let main () =
               [-f]: overwrite existing indexed fragments cache file\n  \
               [-s|--seed <int>]: RNG seed (for repeatable results\n  \
               w/ same input file)\n  \
+              [--scores <filename>]: tab-separated name score file\n  \
+              (molecule names and order must match the input SMILES file;\n  \
+              for Thompson sampling)\n  \
               [--deep-smiles]: input/output molecules in DeepSMILES\n  \
               no-rings format\n"
        Sys.argv.(0);
@@ -567,6 +574,7 @@ let main () =
   if verbose then Log.(set_log_level DEBUG);
   let n = CLI.get_int ["-n"] args in
   let input_frags_fn = CLI.get_string ["-i"] args in
+  let maybe_scores_fn = CLI.get_string_opt ["--scores"] args in
   let output_fn = CLI.get_string ["-o"] args in
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
   let maybe_frags_dict_fn = CLI.get_string_opt ["-if"] args in
@@ -600,6 +608,9 @@ let main () =
     match maybe_frags_dict_fn with
     | None -> (Ht.create 0, [||])
     | Some fn -> load_fragments_dict maybe_init_dist fn in
+  let _smi_name_scores = match maybe_scores_fn with
+    | None -> []
+    | Some scores_fn -> load_scores input_frags_fn scores_fn in
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
     let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
