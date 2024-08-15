@@ -8,7 +8,6 @@
 open Printf
 
 module A = Array
-module Buff = Buffer
 module CLI = Minicli.CLI
 module Fn = Filename
 module Ht = BatHashtbl
@@ -297,19 +296,15 @@ let rev_renumber_ring_closures ht i tokens =
   incr i;
   res
 
-(* uniform random fragment sampling policy *)
-let array_rand_elt rng a =
-  let n = A.length a in
-  let i = BatRandom.State.int rng n in
-  Array.unsafe_get a i
-
-(* FBR: we need the thompson_sample_max policy for maximization *)
+(* default fragment sampling policy for training-set distribution matching *)
+let uniform_random_choice rng a =
+  A.unsafe_get a (BatRandom.State.int rng (A.length a))
 
 let assemble_smiles_fragments rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = array_rand_elt rng seeds in
+    let chosen = uniform_random_choice rng seeds in
     (* Log.error "chosen seed: %s" (string_of_tokens chosen); *)
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   (* Log.error "renumbered seed: %s" (string_of_tokens seed_frag); *)
@@ -320,7 +315,7 @@ let assemble_smiles_fragments rng seeds branches =
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = array_rand_elt rng possible_branches in
+          let chosen = uniform_random_choice rng possible_branches in
           (* Log.error "chosen branch: %s" (string_of_tokens chosen); *)
           rev_renumber_ring_closures ht frag_count chosen in
         (* Log.error "renumbered branch: %s" (string_of_tokens (L.rev branch)); *)
@@ -337,7 +332,7 @@ let assemble_smiles_fragments_PCB rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = array_rand_elt rng seeds in
+    let chosen = uniform_random_choice rng seeds in
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   let rec loop acc tokens = match tokens with
     | [] -> L.rev acc
@@ -346,7 +341,7 @@ let assemble_smiles_fragments_PCB rng seeds branches =
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = array_rand_elt rng possible_branches in
+          let chosen = uniform_random_choice rng possible_branches in
           rev_renumber_ring_closures ht frag_count chosen in
         (* preserve cut bond [x] here *)
         loop (x :: acc) (L.rev_append branch xs)
@@ -362,12 +357,12 @@ let assemble_deepsmiles_fragments rng seeds branches =
       match x with
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
-        let branch = array_rand_elt rng possible_branches in
+        let branch = uniform_random_choice rng possible_branches in
         (* typed cut bond discarded here *)
         loop acc (L.append branch xs)
       | _  -> loop (x :: acc) xs
   in
-  let seed_frag = array_rand_elt rng seeds in
+  let seed_frag = uniform_random_choice rng seeds in
   loop [] seed_frag
 
 type rng_style = Performance
@@ -501,7 +496,7 @@ let load_fragments_dict maybe_init_dist fn =
       (assert (not (Float.is_nan x.mu) &&
                not (Float.is_nan x.sigma));
        (true, x)) in
-  let dists = Array.make n { mu = nan; sigma = nan} in
+  let dists = A.make n { mu = nan; sigma = nan} in
   LO.with_in_file fn (fun input ->
       let header = input_line input in
       (* enforce expected format *)
@@ -533,7 +528,7 @@ let load_fragments_dict maybe_init_dist fn =
 let save_fragments_dict smi2can_smi_id dists fn =
   (* sort fragments by (id, smi) *)
   let n = Ht.length smi2can_smi_id in
-  let arr = Array.make n ("", "", -1) in
+  let arr = A.make n ("", "", -1) in
   let i = ref 0 in
   Ht.iter (fun frag (can_smi, id) ->
       let frag_smi = string_of_tokens frag in
