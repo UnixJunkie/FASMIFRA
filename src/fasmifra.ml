@@ -529,10 +529,17 @@ let load_fragments_dict maybe_init_dist fn =
     );
   (smi2can_smi_id, dists)
 
-(* update the Gaussian score distribution for each fragment *)
-let update_gaussians _smi2can_smi_id _dists smi_name_scores: unit =
-  L.iter (fun (_smi, _name, _score) ->
-      failwith "FBR: TODO"
+(* FBR: we need a function to dump out the fragments' dictionary *)
+
+(* update the Gaussian score distribution for each fragment
+   [s2] is the initial guess for the variance of all fragments *)
+let update_gaussians s2 smi2can_smi_id dists smi_name_scores: unit =
+  L.iter (fun (smi, _mol_name, score) ->
+      L.iter (fun frag ->
+          (* all fragments are supposed to be in the frags dictionary *)
+          let _can_smi, id = Ht.find smi2can_smi_id frag in
+          dists.(id) <- update_gaussian dists.(id) s2 score
+        ) (list_fragments smi)
     ) smi_name_scores
 
 let main () =
