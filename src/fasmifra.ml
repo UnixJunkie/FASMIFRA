@@ -462,11 +462,6 @@ let update_gaussian d_t s2 x_t =
   { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
     sigma = (s2_t *. s2) /. denom }
 
-(* each known SMILES fragment is attache to a canonical SMILES
- * and a unique identifier *)
-type can_smi_id = { can_smi: string;
-                    id: int }
-
 (* count the number of unique fragment ids in [fn] *)
 let num_ids_in_frags_dict fn =
   let lines = LO.lines_of_file fn in
@@ -515,10 +510,12 @@ let load_fragments_dict maybe_init_dist fn =
         let line = input_line input in
         try Scanf.sscanf line "%s@\t%s@\t%d\t%f\t%f"
               (fun smi can_smi id mu sigma ->
+                 let frag =
+                   tokenize_full (rewrite_paren_cut_bond_smiles smi) in
                  (* the canonical SMILES is unused at run-time
                   * (but useful to check the fragments dictionary)
                   * we keep it so that we can output a complete dictionary *)
-                 Ht.add smi2can_smi_id smi { can_smi; id };
+                 Ht.add smi2can_smi_id frag (can_smi, id);
                  if Float.is_nan mu || Float.is_nan sigma then
                    (assert use_global_dist;
                     dists.(id) <- init_dist)
@@ -538,8 +535,9 @@ let save_fragments_dict smi2can_smi_id dists fn =
   let n = Ht.length smi2can_smi_id in
   let arr = Array.make n ("", "", -1) in
   let i = ref 0 in
-  Ht.iter (fun smi (can_smi, id) ->
-      arr.(!i) <- (smi, can_smi, id);
+  Ht.iter (fun frag (can_smi, id) ->
+      let frag_smi = string_of_tokens frag in
+      arr.(!i) <- (frag_smi, can_smi, id);
       incr i
     ) smi2can_smi_id;
   A.sort (fun (smi0, _can_smi0, id0) (smi1, _can_smi1, id1) ->
@@ -555,7 +553,7 @@ let save_fragments_dict smi2can_smi_id dists fn =
       A.iter (fun (smi, can_smi, id) ->
           let dist = dists.(id) in
           fprintf out "%s\t%s\t%d\t%f\t%f\n" smi can_smi id dist.mu dist.sigma
-        )
+        ) arr
     )
 
 (* update the Gaussian score distribution for each fragment
@@ -591,8 +589,9 @@ let main () =
               (initial guess)\n  \
               [-of <filename>]: output fragments to SMILES file\n  \
               (not necessarily canonical ones)\n  \
-              [-if <filename>]: load fragments dictionary file\n  \
+              [-ifd <filename>]: load fragments dictionary file\n  \
               (first run must also use -mu and -sigma)\n  \
+              [-ofd <filename>]: output fragments dictionary\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
               [-s|--seed <int>]: RNG seed (for repeatable results\n  \
@@ -611,7 +610,8 @@ let main () =
   let maybe_scores_fn = CLI.get_string_opt ["--scores"] args in
   let output_fn = CLI.get_string ["-o"] args in
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
-  let maybe_frags_dict_fn = CLI.get_string_opt ["-if"] args in
+  let maybe_frags_dict_in_fn = CLI.get_string_opt ["-ifd"] args in
+  let maybe_frags_dict_out_fn = CLI.get_string_opt ["-ofd"] args in
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
@@ -638,13 +638,40 @@ let main () =
   let maybe_init_dist = match (maybe_mu, maybe_sigma) with
     | (Some mu, Some sigma) -> Some { mu; sigma }
     | _ -> None in
-  let _smi2can_smi_id, _gaussians =
-    match maybe_frags_dict_fn with
-    | None -> (Ht.create 0, [||])
-    | Some fn -> load_fragments_dict maybe_init_dist fn in
-  let _smi_name_scores = match maybe_scores_fn with
+  let smi2can_smi_id, dists, frags_dict_out_fn =
+    match (maybe_frags_dict_in_fn, maybe_frags_dict_out_fn) with
+    | (None, None) -> (Ht.create 0, [||], "/dev/null")
+    | (Some _, None) ->
+      let () = Log.fatal "-ifd without -ofd" in
+      exit 1
+    | (None, Some _) ->
+      let () = Log.fatal "-ofd without -ifd" in
+      exit 1
+    | (Some in_fn, Some out_fn) ->
+      if in_fn = out_fn then
+        let () = Log.fatal "-ofd would overwrite -ifd" in
+        exit 1
+      else
+        let ht, dists = load_fragments_dict maybe_init_dist in_fn in
+        (ht, dists, out_fn) in
+  let smi_name_scores = match maybe_scores_fn with
     | None -> []
     | Some scores_fn -> load_scores input_frags_fn scores_fn in
+  (match smi_name_scores with
+   | [] -> ()
+   | _ ->
+     match maybe_init_dist with
+     | None ->
+       let () = Log.fatal "--scores requires -mu and -sigma" in
+       exit 1
+     | Some init_dist ->
+       (* global variance *)
+       let s2 = init_dist.sigma *. init_dist.sigma in
+       let () = Log.info "updating gaussians" in
+       update_gaussians s2 smi2can_smi_id dists smi_name_scores;
+       let () = Log.info "writing updated frags dict. to %s" frags_dict_out_fn in
+       save_fragments_dict smi2can_smi_id dists frags_dict_out_fn
+  );
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
     let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
