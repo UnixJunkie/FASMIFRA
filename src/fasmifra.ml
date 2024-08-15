@@ -491,6 +491,9 @@ let num_ids_in_frags_dict fn =
     Log.info "%s: %d unique fragments" fn n;
     n
 
+(* fragments dictionary header line *)
+let dict_header = "#smi\tcan_smi\tid\tmean\tstddev"
+
 (* load in a file created by fasmifra_frag_dict.py *)
 let load_fragments_dict maybe_init_dist fn =
   let n = num_ids_in_frags_dict fn in
@@ -507,7 +510,7 @@ let load_fragments_dict maybe_init_dist fn =
   LO.with_in_file fn (fun input ->
       let header = input_line input in
       (* enforce expected format *)
-      assert(header = "smi\tcan_smi\tid\tmean\tstddev");
+      assert(header = dict_header);
       while true do
         let line = input_line input in
         try Scanf.sscanf line "%s@\t%s@\t%d\t%f\t%f"
@@ -529,7 +532,31 @@ let load_fragments_dict maybe_init_dist fn =
     );
   (smi2can_smi_id, dists)
 
-(* FBR: we need a function to dump out the fragments' dictionary *)
+(* save fragments dictionary w/ updated distributions to file *)
+let save_fragments_dict smi2can_smi_id dists fn =
+  (* sort fragments by (id, smi) *)
+  let n = Ht.length smi2can_smi_id in
+  let arr = Array.make n ("", "", -1) in
+  let i = ref 0 in
+  Ht.iter (fun smi (can_smi, id) ->
+      arr.(!i) <- (smi, can_smi, id);
+      incr i
+    ) smi2can_smi_id;
+  A.sort (fun (smi0, _can_smi0, id0) (smi1, _can_smi1, id1) ->
+      if id0 < id1 then
+        -1
+      else if id0 > id1 then
+        1
+      else (* id0 = id1 *)
+        BatString.compare smi0 smi1
+    ) arr;
+  LO.with_out_file fn (fun out ->
+      fprintf out "%s\n" dict_header;
+      A.iter (fun (smi, can_smi, id) ->
+          let dist = dists.(id) in
+          fprintf out "%s\t%s\t%d\t%f\t%f\n" smi can_smi id dist.mu dist.sigma
+        )
+    )
 
 (* update the Gaussian score distribution for each fragment
    [s2] is the initial guess for the variance of all fragments *)
