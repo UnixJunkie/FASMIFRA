@@ -7,7 +7,7 @@
 
 open Printf
 
-module A = Array
+module A = BatArray
 module CLI = Minicli.CLI
 module Fn = Filename
 module Ht = BatHashtbl
@@ -296,10 +296,62 @@ let rev_renumber_ring_closures ht i tokens =
   incr i;
   res
 
+let almost_one = Float.pred 1.0
+(* enforce that the highest float we can draw is <1.0 *)
+let _ = assert(almost_one < 1.0)
+let pi = 4.0 *. (atan 1.0)
+let two_pi = 2.0 *. pi
+
+(* a Gaussian distribution *)
+type dist = { mu: float;
+              sigma: float }
+
+(* [gauss mu sigma] get one float from the normal distribution
+   with mean=mu and stddev=sigma
+   a = cos(2*pi*x) * sqrt(-2*log(1-y))
+   b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below)
+   cf. Python's documentation of random.gauss function *)
+let gauss rng dist =
+  dist.mu +. (dist.sigma *.
+              (cos (two_pi *. (Random.State.float rng almost_one)) *.
+               sqrt (-2.0 *. log (1.0 -. (Random.State.float rng almost_one)))))
+
+(* formulas (4) and (5) in p. 1160 of
+ * "Thompson Sampling-An Efficient Method for Searching Ultralarge Synthesis
+ * on Demand Databases"; https://doi.org/10.1021/acs.jcim.3c01790
+ * [d_t]: distribution for fragment i at time t
+ * [s2]: global variance for all fragments (initial estimate)
+ * [x_t]: observation for fragment i at t
+ * returns the updated distribution for fragment i at t+1 *)
+let update_gaussian d_t s2 x_t =
+  let s2_t = d_t.sigma *. d_t.sigma in
+  let denom = s2_t +. s2 in
+  { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
+    sigma = (s2_t *. s2) /. denom }
+
 (* default fragment sampling policy for training-set distribution matching *)
 let uniform_random_choice rng a =
   A.unsafe_get a (BatRandom.State.int rng (A.length a))
 
+(* maximization by Thompson sampling policy *)
+let thompson_sample_max rng all_dists frag2_can_smi_id frags =
+  (* retrieve the distribution corresponding to each fragment *)
+  let dist_frags =
+    A.map (fun frag ->
+        let _can_smi, frag_id = Ht.find frag2_can_smi_id frag in
+        (all_dists.(frag_id), frag)
+      ) frags in
+  (* play slot machines in Las Vegas *)
+  let sample_frags =
+    A.map (fun (dist, frag) ->
+        (gauss rng dist, frag)
+      ) dist_frags in
+  let max_score = A.max (A.map fst sample_frags) in
+  (* if several have max_score, choose one at random *)
+  let candidates = A.filter (fun (score, _frag) -> score = max_score) sample_frags in
+  let _max_score, frag = uniform_random_choice rng candidates in
+  frag
+      
 let assemble_smiles_fragments rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
@@ -419,43 +471,11 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
     let input_frags = LO.map frags_fn parse_SMILES_line in
     index_fragments maybe_out_fn input_frags
 
-let almost_one = Float.pred 1.0
-let _ = assert(almost_one < 1.0) (* check it works *)
-let pi = 4.0 *. (atan 1.0)
-let two_pi = 2.0 *. pi
-
-(* a Gaussian distribution *)
-type dist = { mu: float;
-              sigma: float }
-
 let square x =
   x *. x
 
 let stddev (mean: float) (l: float list): float =
   sqrt (L.favg (L.map (fun x -> square (x -. mean)) l))
-
-(* [gauss mu sigma] get one float from the normal distribution
-   with mean=mu and stddev=sigma
-   a = cos(2*pi*x) * sqrt(-2*log(1-y))
-   b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below)
-   cf. Python's documentation of random.gauss function *)
-let gauss rng dist =
-  dist.mu +. (dist.sigma *.
-              (cos (two_pi *. (Random.State.float rng almost_one)) *.
-               sqrt (-2.0 *. log (1.0 -. (Random.State.float rng almost_one)))))
-
-(* formulas (4) and (5) in p. 1160 of
- * "Thompson Sampling-An Efficient Method for Searching Ultralarge Synthesis
- * on Demand Databases"; https://doi.org/10.1021/acs.jcim.3c01790
- * [d_t]: distribution for fragment i at time t
- * [s2]: global variance for all fragments (initial estimate)
- * [x_t]: observation for fragment i at t
- * returns the updated distribution for fragment i at t+1 *)
-let update_gaussian d_t s2 x_t =
-  let s2_t = d_t.sigma *. d_t.sigma in
-  let denom = s2_t +. s2 in
-  { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
-    sigma = (s2_t *. s2) /. denom }
 
 (* count the number of unique fragment ids in [fn] *)
 let num_ids_in_frags_dict fn =
@@ -487,7 +507,7 @@ let dict_header = "#smi\tcan_smi\tid\tmean\tstddev"
 (* load in a file created by fasmifra_frag_dict.py *)
 let load_fragments_dict maybe_init_dist fn =
   let n = num_ids_in_frags_dict fn in
-  let smi2can_smi_id = Ht.create n in
+  let frag2can_smi_id = Ht.create n in
   let use_global_dist, init_dist = match maybe_init_dist with
     | None ->
       (* each line is supposed to have non NaN mu and sigma then *)
@@ -510,7 +530,7 @@ let load_fragments_dict maybe_init_dist fn =
                  (* the canonical SMILES is unused at run-time
                   * (but useful to check the fragments dictionary)
                   * we keep it so that we can output a complete dictionary *)
-                 Ht.add smi2can_smi_id frag (can_smi, id);
+                 Ht.add frag2can_smi_id frag (can_smi, id);
                  if Float.is_nan mu || Float.is_nan sigma then
                    (assert use_global_dist;
                     dists.(id) <- init_dist)
@@ -522,19 +542,19 @@ let load_fragments_dict maybe_init_dist fn =
            raise exn)
       done
     );
-  (smi2can_smi_id, dists)
+  (frag2can_smi_id, dists)
 
 (* save fragments dictionary w/ updated distributions to file *)
-let save_fragments_dict smi2can_smi_id dists fn =
+let save_fragments_dict frag2can_smi_id dists fn =
   (* sort fragments by (id, smi) *)
-  let n = Ht.length smi2can_smi_id in
+  let n = Ht.length frag2can_smi_id in
   let arr = A.make n ("", "", -1) in
   let i = ref 0 in
   Ht.iter (fun frag (can_smi, id) ->
       let frag_smi = string_of_tokens frag in
       arr.(!i) <- (frag_smi, can_smi, id);
       incr i
-    ) smi2can_smi_id;
+    ) frag2can_smi_id;
   A.sort (fun (smi0, _can_smi0, id0) (smi1, _can_smi1, id1) ->
       if id0 < id1 then
         -1
@@ -553,11 +573,11 @@ let save_fragments_dict smi2can_smi_id dists fn =
 
 (* update the Gaussian score distribution for each fragment
    [s2] is the initial guess for the variance of all fragments *)
-let update_gaussians s2 smi2can_smi_id dists smi_name_scores: unit =
+let update_gaussians s2 frag2can_smi_id dists smi_name_scores: unit =
   L.iter (fun (smi, _mol_name, score) ->
       L.iter (fun frag ->
           (* all fragments are supposed to be in the frags dictionary *)
-          let _can_smi, id = Ht.find smi2can_smi_id frag in
+          let _can_smi, id = Ht.find frag2can_smi_id frag in
           dists.(id) <- update_gaussian dists.(id) s2 score
         ) (list_fragments smi)
     ) smi_name_scores
@@ -633,7 +653,7 @@ let main () =
   let maybe_init_dist = match (maybe_mu, maybe_sigma) with
     | (Some mu, Some sigma) -> Some { mu; sigma }
     | _ -> None in
-  let smi2can_smi_id, dists, frags_dict_out_fn =
+  let frag2can_smi_id, dists, frags_dict_out_fn =
     match (maybe_frags_dict_in_fn, maybe_frags_dict_out_fn) with
     | (None, None) -> (Ht.create 0, [||], "/dev/null")
     | (Some _, None) ->
@@ -663,9 +683,9 @@ let main () =
        (* global variance *)
        let s2 = init_dist.sigma *. init_dist.sigma in
        let () = Log.info "updating gaussians" in
-       update_gaussians s2 smi2can_smi_id dists smi_name_scores;
+       update_gaussians s2 frag2can_smi_id dists smi_name_scores;
        let () = Log.info "writing updated frags dict. to %s" frags_dict_out_fn in
-       save_fragments_dict smi2can_smi_id dists frags_dict_out_fn
+       save_fragments_dict frag2can_smi_id dists frags_dict_out_fn
   );
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
