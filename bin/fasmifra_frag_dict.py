@@ -7,7 +7,8 @@
 # Read a SMILES fragments file, then output on stdout
 # the corresponding fragment dictionary.
 # Output lines are of the form:
-# '^<smiles:str>\t<cano_smiles:str>\t<frag_id:int>\n'
+# '^<smiles:str>\t<cano_smiles:str>\t<frag_id:int>\t...
+# ...<mean:float>\t<stddev:float>\n'
 # i.e. each SMILES fragment has its canonical SMILES computed
 # and each different canonical SMILES is assigned a new
 # fragment identifier.
