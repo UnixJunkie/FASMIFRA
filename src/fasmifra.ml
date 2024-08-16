@@ -354,11 +354,11 @@ let thompson_sample_max rng all_dists frag2_can_smi_id frags =
   let _max_score, frag = uniform_random_choice rng candidates in
   frag
       
-let assemble_smiles_fragments rng seeds branches =
+let assemble_smiles_fragments choose_frag rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = uniform_random_choice rng seeds in
+    let chosen = choose_frag rng seeds in
     (* Log.error "chosen seed: %s" (string_of_tokens chosen); *)
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   (* Log.error "renumbered seed: %s" (string_of_tokens seed_frag); *)
@@ -369,7 +369,7 @@ let assemble_smiles_fragments rng seeds branches =
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = uniform_random_choice rng possible_branches in
+          let chosen = choose_frag rng possible_branches in
           (* Log.error "chosen branch: %s" (string_of_tokens chosen); *)
           rev_renumber_ring_closures ht frag_count chosen in
         (* Log.error "renumbered branch: %s" (string_of_tokens (L.rev branch)); *)
@@ -382,11 +382,11 @@ let assemble_smiles_fragments rng seeds branches =
 (* like assemble_smiles_fragments, but "Preserve Cut Bonds" (PCB).
    To output generated molecules w/ cut bonds preserved; so that
    generated molecules do not need to be fragmented later on *)
-let assemble_smiles_fragments_PCB rng seeds branches =
+let assemble_smiles_fragments_PCB choose_frag rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = uniform_random_choice rng seeds in
+    let chosen = choose_frag rng seeds in
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   let rec loop acc tokens = match tokens with
     | [] -> L.rev acc
@@ -395,7 +395,7 @@ let assemble_smiles_fragments_PCB rng seeds branches =
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = uniform_random_choice rng possible_branches in
+          let chosen = choose_frag rng possible_branches in
           rev_renumber_ring_closures ht frag_count chosen in
         (* preserve cut bond [x] here *)
         loop (x :: acc) (L.rev_append branch xs)
@@ -404,19 +404,19 @@ let assemble_smiles_fragments_PCB rng seeds branches =
   loop [] seed_frag
 
 (* almost copy/paste of assemble_smiles_fragments *)
-let assemble_deepsmiles_fragments rng seeds branches =
+let assemble_deepsmiles_fragments choose_frag rng seeds branches =
   let rec loop acc tokens = match tokens with
     | [] -> L.rev acc
     | x :: xs ->
       match x with
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
-        let branch = uniform_random_choice rng possible_branches in
+        let branch = choose_frag rng possible_branches in
         (* typed cut bond discarded here *)
         loop acc (L.append branch xs)
       | _  -> loop (x :: acc) xs
   in
-  let seed_frag = uniform_random_choice rng seeds in
+  let seed_frag = choose_frag rng seeds in
   loop [] seed_frag
 
 type rng_style = Performance
@@ -635,18 +635,6 @@ let main () =
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
   let maybe_mu = CLI.get_float_opt ["-mu"] args in
   let maybe_sigma = CLI.get_float_opt ["-sigma"] args in
-  let assemble =
-    if use_deep_smiles then
-      if preserve_cut_bonds then
-        (Log.fatal "PCB mode for DeepSMILES unsupported yet";
-         exit 1)
-      else
-        assemble_deepsmiles_fragments
-    else (* use SMILES *)
-    if preserve_cut_bonds then
-      assemble_smiles_fragments_PCB
-    else
-      assemble_smiles_fragments in
   let get_rng, rng = match CLI.get_int_opt ["-s";"--seed"] args with
     | None -> ((fun x -> x),
                BatRandom.State.make_self_init ())
@@ -657,17 +645,26 @@ let main () =
      let () = Log.fatal "use either -o (most users) or -of (for TS)" in
      exit 1
   );
-  let maybe_init_dist = match (maybe_mu, maybe_sigma) with
-    | (Some mu, Some sigma) -> Some { mu; sigma }
-    | _ -> None in
+  let assemble =
+    if use_deep_smiles then
+      if preserve_cut_bonds then
+        (Log.fatal "PCB mode for DeepSMILES unsupported yet";
+         exit 1)
+      else
+        assemble_deepsmiles_fragments uniform_random_choice
+    else (* use SMILES *)
+    if preserve_cut_bonds then
+      assemble_smiles_fragments_PCB uniform_random_choice
+    else
+      assemble_smiles_fragments uniform_random_choice in
+  let maybe_init_dist, _use_TS = match (maybe_mu, maybe_sigma) with
+    | (Some mu, Some sigma) -> (Some { mu; sigma }, true)
+    | _ -> (None, false) in
   let frag2can_smi_id, dists, frags_dict_out_fn =
     match (maybe_frags_dict_in_fn, maybe_frags_dict_out_fn) with
     | (None, None) -> (Ht.create 0, [||], "/dev/null")
-    | (Some _, None) ->
-      let () = Log.fatal "-ifd without -ofd" in
-      exit 1
-    | (None, Some _) ->
-      let () = Log.fatal "-ofd without -ifd" in
+    | (_, None) | (None, _) ->
+      let () = Log.fatal "provide -ifd and -ofd" in
       exit 1
     | (Some in_fn, Some out_fn) ->
       if in_fn = out_fn then
