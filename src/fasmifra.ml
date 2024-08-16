@@ -283,7 +283,9 @@ let index_fragments maybe_out_fn named_smiles =
          Ht.iter (fun (i, j) branches ->
              dump_branch_fragments out (Cut_bond (i, j)) branches
            ) ht
-       )
+       );
+     Log.info "SMILES fragments written to %s" output_fn;
+     exit 0 (* do not try to generate molecules after this *)
   );
   (seeds, ht)
 
@@ -597,16 +599,17 @@ let main () =
               (molecules w/ annotated cut bonds as output by \n  \
               fasmifra_fragment.py)\n  \
               -o <filename>: output file for generated molecules\n  \
+              (imcompatible w/ -of)\n  \
               -n <int>: number of molecules to generate\n  \
               [-mu <float>]: average score for all fragments\n  \
-              (initial guess)\n  \
+              (initial guess; for TS)\n  \
               [-sigma <float>]: standard deviation for all fragments\n  \
-              (initial guess)\n  \
+              (initial guess; for TS)\n  \
               [-of <filename>]: output fragments to SMILES file\n  \
-              (not necessarily canonical ones)\n  \
+              (not necessarily canonical ones; incompatible w/ -o)\n  \
               [-ifd <filename>]: load fragments dictionary file\n  \
-              (first run must also use -mu and -sigma)\n  \
-              [-ofd <filename>]: output fragments dictionary\n  \
+              (must also use -mu and -sigma)\n  \
+              [-ofd <filename>]: output updated fragments dictionary\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
               [-s|--seed <int>]: RNG seed (for repeatable results\n  \
