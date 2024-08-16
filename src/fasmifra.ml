@@ -623,7 +623,7 @@ let main () =
      exit 1);
   let verbose = CLI.get_set_bool ["-v"] args in
   if verbose then Log.(set_log_level DEBUG);
-  let n = CLI.get_int ["-n"] args in
+  let n = CLI.get_int_def ["-n"] args 0 in
   let input_frags_fn = CLI.get_string ["-i"] args in
   let maybe_scores_fn = CLI.get_string_opt ["--scores"] args in
   let output_fn = CLI.get_string_def ["-o"] args "/dev/null" in
