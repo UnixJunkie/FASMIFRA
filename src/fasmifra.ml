@@ -232,17 +232,6 @@ let rewrite_paren_cut_bond_smiles s =
        ) (Str.bounded_full_split paren_cut_bond_regexp s 1024)
     )
 
-(* list all fragments in a SMILES w/ annotated cut bonds *)
-let list_fragments smi =
-  let seed_frags = ref [] in
-  let frags_ht = Ht.create 11 in
-  let rewritten = rewrite_paren_cut_bond_smiles smi in
-  let tokens = tokenize_full rewritten in
-  fragment seed_frags frags_ht tokens;
-  Ht.fold (fun _i_j frags acc ->
-      L.rev_append frags acc
-    ) frags_ht !seed_frags
-
 (* dump all fragments to opened file.
    REMARK: each fragment is a valid SMILES if cut bonds are not erased. *)
 let dump_seed_fragments
@@ -263,6 +252,22 @@ let dump_branch_fragments
       fprintf_tokens out (cut_bond :: tokens);
       output_char out '\n' (* terminate fragment *)
     ) frags
+
+(* list all fragments in a SMILES w/ annotated cut bonds
+   RELATED to dump_seed_fragments followed by dump_branch_fragments *)
+let list_fragments smi =
+  let seed_frags = ref [] in
+  let frags_ht = Ht.create 11 in
+  let rewritten = rewrite_paren_cut_bond_smiles smi in
+  let tokens = tokenize_full rewritten in
+  fragment seed_frags frags_ht tokens;
+  Ht.fold (fun (i, j) frags acc ->
+      (* properly outputing a branch fragment requires
+         that it is prefixed by the correct cut bond *)
+      L.fold_left (fun acc' frag ->
+          (Cut_bond (i, j) :: frag) :: acc'
+        ) acc frags
+    ) frags_ht !seed_frags
 
 let index_fragments maybe_out_fn named_smiles =
   let n = L.length named_smiles in
@@ -343,7 +348,7 @@ let thompson_max all_dists frag2_can_smi_id rng frags =
         let _can_smi, frag_id =
           try Ht.find frag2_can_smi_id frag
           with Not_found ->
-            (Log.fatal "Fasmifra.thompson_max: frag not int dict: %s"
+            (Log.fatal "Fasmifra.thompson_max: frag not in dict: %s"
                (string_of_tokens frag);
              exit 1) in
         (all_dists.(frag_id), frag)
