@@ -626,7 +626,7 @@ let main () =
   let n = CLI.get_int ["-n"] args in
   let input_frags_fn = CLI.get_string ["-i"] args in
   let maybe_scores_fn = CLI.get_string_opt ["--scores"] args in
-  let output_fn = CLI.get_string ["-o"] args in
+  let output_fn = CLI.get_string_def ["-o"] args "/dev/null" in
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
   let maybe_frags_dict_in_fn = CLI.get_string_opt ["-ifd"] args in
   let maybe_frags_dict_out_fn = CLI.get_string_opt ["-ofd"] args in
@@ -653,6 +653,10 @@ let main () =
     | Some seed -> ((fun x -> Random.State.split x),
                     BatRandom.State.make [|seed|]) in
   CLI.finalize (); (* ------------ CLI parsing ---------------- *)
+  (if Option.is_some maybe_frags_out_fn && output_fn <> "/dev/null" then
+     let () = Log.fatal "use either -o (most users) or -of (for TS)" in
+     exit 1
+  );
   let maybe_init_dist = match (maybe_mu, maybe_sigma) with
     | (Some mu, Some sigma) -> Some { mu; sigma }
     | _ -> None in
