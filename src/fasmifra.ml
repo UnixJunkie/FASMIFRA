@@ -479,6 +479,9 @@ let square x =
 let stddev (mean: float) (l: float list): float =
   sqrt (L.favg (L.map (fun x -> square (x -. mean)) l))
 
+(* fragments dictionary header line *)
+let dict_header = "#smi\tcan_smi\tid\tmean\tstddev"
+
 (* count the number of unique fragment ids in [fn] *)
 let num_ids_in_frags_dict fn =
   let lines = LO.lines_of_file fn in
@@ -486,7 +489,7 @@ let num_ids_in_frags_dict fn =
   | [] -> assert false
   | header :: other_lines ->
     (* enforce expected format *)
-    assert(header = "smi\tcan_smi\tid\tmean\tstddev");
+    assert(header = dict_header);
     let ids =
       L.fold_left (fun acc line ->
           try Scanf.sscanf line "%s@\t%s@\t%d\t%f\t%f"
@@ -502,9 +505,6 @@ let num_ids_in_frags_dict fn =
     assert(ISet.max_elt ids = n - 1);
     Log.info "%s: %d unique fragments" fn n;
     n
-
-(* fragments dictionary header line *)
-let dict_header = "#smi\tcan_smi\tid\tmean\tstddev"
 
 (* load in a file created by fasmifra_frag_dict.py *)
 let load_fragments_dict maybe_init_dist fn =
