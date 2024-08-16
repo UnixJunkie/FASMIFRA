@@ -608,7 +608,12 @@ let update_gaussians s2 frag2can_smi_id dists smi_name_scores: unit =
   L.iter (fun (smi, _mol_name, score) ->
       L.iter (fun frag ->
           (* all fragments are supposed to be in the frags dictionary *)
-          let _can_smi, id = Ht.find frag2can_smi_id frag in
+          let _can_smi, id =
+            try Ht.find frag2can_smi_id frag with
+            | Not_found ->
+              (Log.fatal "Fasmifra.update_gaussians: frag not in Ht: %s"
+                 (string_of_tokens frag);
+               exit 1) in
           dists.(id) <- update_gaussian dists.(id) s2 score
         ) (list_fragments smi)
     ) smi_name_scores
