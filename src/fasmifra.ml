@@ -337,22 +337,36 @@ let update_gaussian d_t s2 x_t =
     sigma = (s2_t *. s2) /. denom }
 
 (* default fragment sampling policy for training-set distribution matching *)
-let uniform_random rng frags =
+let uniform_random _none rng frags =
   A.unsafe_get frags (BatRandom.State.int rng (A.length frags))
 
 (* maximization by Thompson sampling policy *)
-let thompson_max all_dists frag2_can_smi_id rng frags =
+let thompson_max all_dists frag2_can_smi_id maybe_cut_bond rng frags =
   (* retrieve the distribution corresponding to each fragment *)
   let dist_frags =
-    A.map (fun frag ->
-        let _can_smi, frag_id =
-          try Ht.find frag2_can_smi_id frag
-          with Not_found ->
-            (Log.fatal "Fasmifra.thompson_max: frag not in dict: %s"
-               (string_of_tokens frag);
-             exit 1) in
-        (all_dists.(frag_id), frag)
-      ) frags in
+    match maybe_cut_bond with
+    | None -> (* frags are seed fragments *)
+      A.map (fun frag ->
+          let _can_smi, frag_id =
+            try Ht.find frag2_can_smi_id frag
+            with Not_found ->
+              (Log.fatal "Fasmifra.thompson_max: frag not in dict: %s"
+                 (string_of_tokens frag);
+               exit 1) in
+          (all_dists.(frag_id), frag)
+        ) frags
+    | Some cut_bond -> (* frags are branch fragments *)
+      A.map (fun frag ->
+          (* just for the lookup, put back the prefix cut bond *)
+          let frag' = cut_bond :: frag in
+          let _can_smi, frag_id =
+            try Ht.find frag2_can_smi_id frag'
+            with Not_found ->
+              (Log.fatal "Fasmifra.thompson_max: frag not in dict: %s"
+                 (string_of_tokens frag');
+               exit 1) in
+          (all_dists.(frag_id), frag)
+        ) frags in
   (* play slot machines in Las Vegas *)
   let sample_frags =
     A.map (fun (dist, frag) ->
@@ -361,14 +375,14 @@ let thompson_max all_dists frag2_can_smi_id rng frags =
   let max_score = A.max (A.map fst sample_frags) in
   (* if several have max_score, choose one at random *)
   let candidates = A.filter (fun (score, _frag) -> score = max_score) sample_frags in
-  let _max_score, frag = uniform_random rng candidates in
+  let _max_score, frag = uniform_random None rng candidates in
   frag
 
 let assemble_smiles_fragments choose_frag rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = choose_frag rng seeds in
+    let chosen = choose_frag None rng seeds in
     (* Log.error "chosen seed: %s" (string_of_tokens chosen); *)
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   (* Log.error "renumbered seed: %s" (string_of_tokens seed_frag); *)
@@ -376,10 +390,10 @@ let assemble_smiles_fragments choose_frag rng seeds branches =
     | [] -> L.rev acc
     | x :: xs ->
       match x with
-      | Cut_bond (i, j) ->
+      | (Cut_bond (i, j)) as c_ij ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = choose_frag rng possible_branches in
+          let chosen = choose_frag (Some c_ij) rng possible_branches in
           (* Log.error "chosen branch: %s" (string_of_tokens chosen); *)
           rev_renumber_ring_closures ht frag_count chosen in
         (* Log.error "renumbered branch: %s" (string_of_tokens (L.rev branch)); *)
@@ -396,16 +410,16 @@ let assemble_smiles_fragments_PCB choose_frag rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = choose_frag rng seeds in
+    let chosen = choose_frag None rng seeds in
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   let rec loop acc tokens = match tokens with
     | [] -> L.rev acc
     | x :: xs ->
       match x with
-      | Cut_bond (i, j) ->
+      | (Cut_bond (i, j)) as c_ij ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = choose_frag rng possible_branches in
+          let chosen = choose_frag (Some c_ij) rng possible_branches in
           rev_renumber_ring_closures ht frag_count chosen in
         (* preserve cut bond [x] here *)
         loop (x :: acc) (L.rev_append branch xs)
@@ -419,14 +433,14 @@ let assemble_deepsmiles_fragments choose_frag rng seeds branches =
     | [] -> L.rev acc
     | x :: xs ->
       match x with
-      | Cut_bond (i, j) ->
+      | (Cut_bond (i, j)) as c_ij ->
         let possible_branches = Ht.find branches (i, j) in
-        let branch = choose_frag rng possible_branches in
+        let branch = choose_frag (Some c_ij) rng possible_branches in
         (* typed cut bond discarded here *)
         loop acc (L.append branch xs)
       | _  -> loop (x :: acc) xs
   in
-  let seed_frag = choose_frag rng seeds in
+  let seed_frag = choose_frag None rng seeds in
   loop [] seed_frag
 
 type rng_style = Performance
