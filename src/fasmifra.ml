@@ -629,6 +629,8 @@ let main () =
   let output_fn = CLI.get_string_def ["-o"] args "/dev/null" in
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
   let maybe_frags_dict_in_fn = CLI.get_string_opt ["-ifd"] args in
+  (* don't read/write to same frags dict. file: we want to see
+     the evolution of distributions *)
   let maybe_frags_dict_out_fn = CLI.get_string_opt ["-ofd"] args in
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
@@ -640,7 +642,7 @@ let main () =
                BatRandom.State.make_self_init ())
     | Some seed -> ((fun x -> Random.State.split x),
                     BatRandom.State.make [|seed|]) in
-  CLI.finalize (); (* ------------ CLI parsing ---------------- *)
+  CLI.finalize (); (* ------------ CLI parsing ----------------------------- *)
   (if Option.is_some maybe_frags_out_fn && output_fn <> "/dev/null" then
      let () = Log.fatal "use either -o (most users) or -of (for TS)" in
      exit 1
@@ -669,15 +671,15 @@ let main () =
   let assemble =
     if use_deep_smiles then
       if preserve_cut_bonds then
-        (Log.fatal "PCB mode for DeepSMILES unsupported yet";
+        (Log.fatal "PCB mode unsupported for DeepSMILES";
          exit 1)
       else
-        assemble_deepsmiles_fragments choose_frag
+        assemble_deepsmiles_fragments
     else (* use SMILES *)
     if preserve_cut_bonds then
-      assemble_smiles_fragments_PCB choose_frag
+      assemble_smiles_fragments_PCB
     else
-      assemble_smiles_fragments choose_frag in
+      assemble_smiles_fragments in
   (match maybe_scores_fn with
    | None -> ()
    | Some scores_fn ->
@@ -706,7 +708,8 @@ let main () =
       let i = ref 0 in
       while !i < n do
         try
-          let tokens = assemble (get_rng rng) seed_fragments frags_ht in
+          let rng' = get_rng rng in
+          let tokens = assemble choose_frag rng' seed_fragments frags_ht in
           fprintf_tokens out tokens;
           fprintf out "\tgenmol_%d\n" !i;
           incr i
