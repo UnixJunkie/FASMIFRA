@@ -340,7 +340,12 @@ let thompson_max all_dists frag2_can_smi_id rng frags =
   (* retrieve the distribution corresponding to each fragment *)
   let dist_frags =
     A.map (fun frag ->
-        let _can_smi, frag_id = Ht.find frag2_can_smi_id frag in
+        let _can_smi, frag_id =
+          try Ht.find frag2_can_smi_id frag
+          with Not_found ->
+            (Log.fatal "Fasmifra.thompson_max: frag not int dict: %s"
+               (string_of_tokens frag);
+             exit 1) in
         (all_dists.(frag_id), frag)
       ) frags in
   (* play slot machines in Las Vegas *)
@@ -492,7 +497,7 @@ let num_ids_in_frags_dict fn =
     assert(header = dict_header);
     let ids =
       L.fold_left (fun acc line ->
-          try Scanf.sscanf line "%s@\t%s@\t%d\t%f\t%f"
+          try Scanf.sscanf line "%s@\t%s@\t%d\t%s@\t%s"
                 (fun _smi _can_smi id _mu _sigma ->
                    ISet.add id acc)
           with exn ->
@@ -520,29 +525,34 @@ let load_fragments_dict maybe_init_dist fn =
        (true, x)) in
   let dists = A.make n { mu = nan; sigma = nan} in
   LO.with_in_file fn (fun input ->
-      let header = input_line input in
-      (* enforce expected format *)
-      assert(header = dict_header);
-      while true do
-        let line = input_line input in
-        try Scanf.sscanf line "%s@\t%s@\t%d\t%f\t%f"
-              (fun smi can_smi id mu sigma ->
-                 let frag =
-                   tokenize_full (rewrite_paren_cut_bond_smiles smi) in
-                 (* the canonical SMILES is unused at run-time
-                  * (but useful to check the fragments dictionary)
-                  * we keep it so that we can output a complete dictionary *)
-                 Ht.add frag2can_smi_id frag (can_smi, id);
-                 if Float.is_nan mu || Float.is_nan sigma then
-                   (assert use_global_dist;
-                    dists.(id) <- init_dist)
-                 else
-                   dists.(id) <- { mu; sigma }
-              )
-        with exn ->
-          (Log.fatal "Fasmifra.load_fragments_dict: cannot parse: %s" line;
-           raise exn)
-      done
+      try
+        let header = input_line input in
+        (* enforce expected format *)
+        assert(header = dict_header);
+        while true do
+          let line = input_line input in
+          try Scanf.sscanf line "%s@\t%s@\t%d\t%s@\t%s"
+                (fun smi can_smi id mu' sigma' ->
+                   (* allow mu and sigma to be nan *)
+                   let mu = float_of_string mu' in
+                   let sigma = float_of_string sigma' in
+                   let frag =
+                     tokenize_full (rewrite_paren_cut_bond_smiles smi) in
+                   (* the canonical SMILES is unused at run-time
+                    * (but useful to check the fragments dictionary)
+                    * we keep it so that we can output a complete dictionary *)
+                   Ht.add frag2can_smi_id frag (can_smi, id);
+                   if Float.is_nan mu || Float.is_nan sigma then
+                     (assert use_global_dist;
+                      dists.(id) <- init_dist)
+                   else
+                     dists.(id) <- { mu; sigma }
+                )
+          with exn ->
+            (Log.fatal "Fasmifra.load_fragments_dict: cannot parse: %s" line;
+             raise exn)
+        done
+      with End_of_file -> ()
     );
   (frag2can_smi_id, dists)
 
