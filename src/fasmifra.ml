@@ -678,13 +678,11 @@ let main () =
       assemble_smiles_fragments_PCB choose_frag
     else
       assemble_smiles_fragments choose_frag in
-  
-  let smi_name_scores = match maybe_scores_fn with
-    | None -> []
-    | Some scores_fn -> load_scores input_frags_fn scores_fn in
-  (match smi_name_scores with
-   | [] -> ()
-   | _ ->
+  (match maybe_scores_fn with
+   | None -> ()
+   | Some scores_fn ->
+     let () = Log.info "reading scores from %s" scores_fn in
+     let smi_name_scores = load_scores input_frags_fn scores_fn in
      match maybe_init_dist with
      | None ->
        let () = Log.fatal "--scores requires -mu and -sigma" in
