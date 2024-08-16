@@ -332,11 +332,11 @@ let update_gaussian d_t s2 x_t =
     sigma = (s2_t *. s2) /. denom }
 
 (* default fragment sampling policy for training-set distribution matching *)
-let uniform_random_choice rng a =
-  A.unsafe_get a (BatRandom.State.int rng (A.length a))
+let uniform_random rng frags =
+  A.unsafe_get frags (BatRandom.State.int rng (A.length frags))
 
 (* maximization by Thompson sampling policy *)
-let thompson_sample_max rng all_dists frag2_can_smi_id frags =
+let thompson_max all_dists frag2_can_smi_id rng frags =
   (* retrieve the distribution corresponding to each fragment *)
   let dist_frags =
     A.map (fun frag ->
@@ -351,9 +351,9 @@ let thompson_sample_max rng all_dists frag2_can_smi_id frags =
   let max_score = A.max (A.map fst sample_frags) in
   (* if several have max_score, choose one at random *)
   let candidates = A.filter (fun (score, _frag) -> score = max_score) sample_frags in
-  let _max_score, frag = uniform_random_choice rng candidates in
+  let _max_score, frag = uniform_random rng candidates in
   frag
-      
+
 let assemble_smiles_fragments choose_frag rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
@@ -645,19 +645,7 @@ let main () =
      let () = Log.fatal "use either -o (most users) or -of (for TS)" in
      exit 1
   );
-  let assemble =
-    if use_deep_smiles then
-      if preserve_cut_bonds then
-        (Log.fatal "PCB mode for DeepSMILES unsupported yet";
-         exit 1)
-      else
-        assemble_deepsmiles_fragments uniform_random_choice
-    else (* use SMILES *)
-    if preserve_cut_bonds then
-      assemble_smiles_fragments_PCB uniform_random_choice
-    else
-      assemble_smiles_fragments uniform_random_choice in
-  let maybe_init_dist, _use_TS = match (maybe_mu, maybe_sigma) with
+  let maybe_init_dist, use_TS = match (maybe_mu, maybe_sigma) with
     | (Some mu, Some sigma) -> (Some { mu; sigma }, true)
     | _ -> (None, false) in
   let frag2can_smi_id, dists, frags_dict_out_fn =
@@ -673,6 +661,24 @@ let main () =
       else
         let ht, dists = load_fragments_dict maybe_init_dist in_fn in
         (ht, dists, out_fn) in
+  let choose_frag =
+    if use_TS then
+      thompson_max dists frag2can_smi_id
+    else
+      uniform_random in
+  let assemble =
+    if use_deep_smiles then
+      if preserve_cut_bonds then
+        (Log.fatal "PCB mode for DeepSMILES unsupported yet";
+         exit 1)
+      else
+        assemble_deepsmiles_fragments choose_frag
+    else (* use SMILES *)
+    if preserve_cut_bonds then
+      assemble_smiles_fragments_PCB choose_frag
+    else
+      assemble_smiles_fragments choose_frag in
+  
   let smi_name_scores = match maybe_scores_fn with
     | None -> []
     | Some scores_fn -> load_scores input_frags_fn scores_fn in
