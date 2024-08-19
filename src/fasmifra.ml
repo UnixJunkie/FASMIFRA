@@ -373,6 +373,12 @@ let update_gaussians dists_ht s2 score frag_ids =
       arr.(frag_id.k) <- update_gaussian arr.(frag_id.k) s2 score
     ) frag_ids
 
+let update_many_gaussians s2 ij2dists smi_name_scores =
+  L.iter (fun (_smi, mol_name, score) ->
+      let frag_ids = frag_ids_of_string mol_name in
+      update_gaussians ij2dists s2 score frag_ids
+    ) smi_name_scores
+
 (* default fragment sampling policy for training-set distribution matching *)
 let uniform_random rng _ij n =
   BatRandom.State.int rng n
@@ -580,14 +586,13 @@ let main () =
               (imcompatible w/ -of)\n  \
               -n <int>: number of molecules to generate\n  \
               [-mu <float>]: average score for all fragments\n  \
-              (initial guess; for TS)\n  \
+              (initial guess; for 1st TS iteration only)\n  \
               [-sigma <float>]: standard deviation for all fragments\n  \
-              (initial guess; for TS)\n  \
+              (initial guess; for all TS iterations)\n  \
               [-of <filename>]: output fragments to SMILES file\n  \
               (not necessarily canonical ones; incompatible w/ -o)\n  \
-              [-ifd <filename>]: load fragments dictionary file\n  \
-              (must also use -mu and -sigma)\n  \
-              [-ofd <filename>]: output updated fragments dictionary\n  \
+              [-ig <filename>]: load (fragments') gaussians from file\n  \
+              [-og <filename>]: output gaussians to file\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
               [-s|--seed <int>]: RNG seed (for repeatable results\n  \
@@ -606,10 +611,10 @@ let main () =
   let maybe_scores_fn = CLI.get_string_opt ["--scores"] args in
   let output_fn = CLI.get_string_def ["-o"] args "/dev/null" in
   let maybe_frags_out_fn = CLI.get_string_opt ["-of"] args in
-  let maybe_frags_dict_in_fn = CLI.get_string_opt ["-ifd"] args in
+  let maybe_in_gauss_fn = CLI.get_string_opt ["-ig"] args in
   (* don't read/write to same frags dict. file: we want to see
      the evolution of distributions *)
-  let maybe_frags_dict_out_fn = CLI.get_string_opt ["-ofd"] args in
+  let maybe_out_gauss_fn = CLI.get_string_opt ["-og"] args in
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
@@ -622,21 +627,19 @@ let main () =
                     BatRandom.State.make [|seed|]) in
   CLI.finalize (); (* ------------ CLI parsing ----------------------------- *)
   (if Option.is_some maybe_frags_out_fn && output_fn <> "/dev/null" then
-     let () = Log.fatal "use either -o (most users) or -of (for TS)" in
+     let () = Log.fatal "use either -o (most users) or -of" in
      exit 1
   );
-  let maybe_init_dist, use_TS = match (maybe_mu, maybe_sigma) with
-    | (Some mu, Some sigma) -> (Some { mu; sigma }, true)
-    | _ -> (None, false) in
-  let ij2dists, frags_dict_out_fn =
-    match (maybe_frags_dict_in_fn, maybe_frags_dict_out_fn) with
+  let use_TS = Option.is_some maybe_mu || Option.is_some maybe_sigma in
+  let ij2dists, dists_out_fn =
+    match (maybe_in_gauss_fn, maybe_out_gauss_fn) with
     | (None, None) -> (Ht.create 0, "/dev/null")
     | (_, None) | (None, _) ->
-      let () = Log.fatal "provide -ifd and -ofd" in
+      let () = Log.fatal "provide -ig and -og" in
       exit 1
     | (Some in_fn, Some out_fn) ->
       if in_fn = out_fn then
-        let () = Log.fatal "-ofd would overwrite -ifd" in
+        let () = Log.fatal "-og would overwrite -ig" in
         exit 1
       else
         (load_gaussians in_fn, out_fn) in
@@ -648,7 +651,7 @@ let main () =
   let assemble =
     if use_deep_smiles then
       if preserve_cut_bonds then
-        (Log.fatal "PCB mode unsupported for DeepSMILES";
+        (Log.fatal "DeepSMILES: unsupported -pcb";
          exit 1)
       else
         assemble_deepsmiles_fragments
@@ -661,18 +664,18 @@ let main () =
    | None -> ()
    | Some scores_fn ->
      let () = Log.info "reading scores from %s" scores_fn in
-     let _smi_name_scores = load_scores input_frags_fn scores_fn in
-     match maybe_init_dist with
+     let smi_name_scores = load_scores input_frags_fn scores_fn in
+     match maybe_sigma with
      | None ->
-       let () = Log.fatal "--scores requires -mu and -sigma" in
+       let () = Log.fatal "--scores requires -sigma" in
        exit 1
-     | Some init_dist ->
+     | Some sigma ->
        (* global variance *)
-       let _s2 = init_dist.sigma *. init_dist.sigma in
+       let s2 = sigma *. sigma in
        let () = Log.info "updating gaussians" in
-       (* update_gaussians s2 gaussians_ht smi_name_scores; *)
-       let () = Log.info "writing updated frags dict. to %s" frags_dict_out_fn in
-       (* save_fragments_dict frag2can_smi_id dists frags_dict_out_fn *)
+       update_many_gaussians s2 ij2dists smi_name_scores;
+       let () = Log.info "writing updated frags dict. to %s" dists_out_fn in
+       (* save_fragments_dict frag2can_smi_id dists dists_out_fn *)
        ()
   );
   Log.info "indexing fragments";
