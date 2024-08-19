@@ -253,22 +253,6 @@ let dump_branch_fragments
       output_char out '\n' (* terminate fragment *)
     ) frags
 
-(* list all fragments in a SMILES w/ annotated cut bonds
-   RELATED to dump_seed_fragments followed by dump_branch_fragments *)
-let list_fragments smi =
-  let seed_frags = ref [] in
-  let frags_ht = Ht.create 11 in
-  let rewritten = rewrite_paren_cut_bond_smiles smi in
-  let tokens = tokenize_full rewritten in
-  fragment seed_frags frags_ht tokens;
-  Ht.fold (fun (i, j) frags acc ->
-      (* properly outputing a branch fragment requires
-         that it is prefixed by the correct cut bond *)
-      L.fold_left (fun acc' frag ->
-          (Cut_bond (i, j) :: frag) :: acc'
-        ) acc frags
-    ) frags_ht !seed_frags
-
 let index_fragments maybe_out_fn named_smiles =
   let n = L.length named_smiles in
   let seed_frags = ref [] in
@@ -339,44 +323,6 @@ let update_gaussian d_t s2 x_t =
 (* default fragment sampling policy for training-set distribution matching *)
 let uniform_random _none rng frags =
   A.unsafe_get frags (BatRandom.State.int rng (A.length frags))
-
-(* maximization by Thompson sampling policy *)
-let thompson_max all_dists frag2_can_smi_id maybe_cut_bond rng frags =
-  (* retrieve the distribution corresponding to each fragment *)
-  let dist_frags =
-    match maybe_cut_bond with
-    | None -> (* frags are seed fragments *)
-      A.map (fun frag ->
-          let _can_smi, frag_id =
-            try Ht.find frag2_can_smi_id frag
-            with Not_found ->
-              (Log.fatal "Fasmifra.thompson_max: frag not in dict: %s"
-                 (string_of_tokens frag);
-               exit 1) in
-          (all_dists.(frag_id), frag)
-        ) frags
-    | Some cut_bond -> (* frags are branch fragments *)
-      A.map (fun frag ->
-          (* just for the lookup, put back the prefix cut bond *)
-          let frag' = cut_bond :: frag in
-          let _can_smi, frag_id =
-            try Ht.find frag2_can_smi_id frag'
-            with Not_found ->
-              (Log.fatal "Fasmifra.thompson_max: frag not in dict: %s"
-                 (string_of_tokens frag');
-               exit 1) in
-          (all_dists.(frag_id), frag)
-        ) frags in
-  (* play slot machines in Las Vegas *)
-  let sample_frags =
-    A.map (fun (dist, frag) ->
-        (gauss rng dist, frag)
-      ) dist_frags in
-  let max_score = A.max (A.map fst sample_frags) in
-  (* if several have max_score, choose one at random *)
-  let candidates = A.filter (fun (score, _frag) -> score = max_score) sample_frags in
-  let _max_score, frag = uniform_random None rng candidates in
-  frag
 
 let assemble_smiles_fragments choose_frag rng seeds branches =
   let frag_count = ref 0 in
@@ -497,12 +443,6 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
     let input_frags = LO.map frags_fn parse_SMILES_line in
     index_fragments maybe_out_fn input_frags
 
-let square x =
-  x *. x
-
-let stddev (mean: float) (l: float list): float =
-  sqrt (L.favg (L.map (fun x -> square (x -. mean)) l))
-
 (* fragments dictionary header line *)
 let dict_header = "#smi\tcan_smi\tid\tmean\tstddev"
 
@@ -530,51 +470,6 @@ let num_ids_in_frags_dict fn =
     Log.info "%s: %d unique fragments" fn n;
     n
 
-(* load in a file created by fasmifra_frag_dict.py *)
-let load_fragments_dict maybe_init_dist fn =
-  let n = num_ids_in_frags_dict fn in
-  let frag2can_smi_id = Ht.create n in
-  let use_global_dist, init_dist = match maybe_init_dist with
-    | None ->
-      (* each line is supposed to have non NaN mu and sigma then *)
-      (false, { mu = nan; sigma = nan})
-    | Some x ->
-      (assert (not (Float.is_nan x.mu) &&
-               not (Float.is_nan x.sigma));
-       (true, x)) in
-  let dists = A.make n { mu = nan; sigma = nan} in
-  LO.with_in_file fn (fun input ->
-      try
-        let header = input_line input in
-        (* enforce expected format *)
-        assert(header = dict_header);
-        while true do
-          let line = input_line input in
-          try Scanf.sscanf line "%s@\t%s@\t%d\t%s@\t%s"
-                (fun smi can_smi id mu' sigma' ->
-                   (* allow mu and sigma to be nan *)
-                   let mu = float_of_string mu' in
-                   let sigma = float_of_string sigma' in
-                   let frag =
-                     tokenize_full (rewrite_paren_cut_bond_smiles smi) in
-                   (* the canonical SMILES is unused at run-time
-                    * (but useful to check the fragments dictionary)
-                    * we keep it so that we can output a complete dictionary *)
-                   Ht.add frag2can_smi_id frag (can_smi, id);
-                   if Float.is_nan mu || Float.is_nan sigma then
-                     (assert use_global_dist;
-                      dists.(id) <- init_dist)
-                   else
-                     dists.(id) <- { mu; sigma }
-                )
-          with exn ->
-            (Log.fatal "Fasmifra.load_fragments_dict: cannot parse: %s" line;
-             raise exn)
-        done
-      with End_of_file -> ()
-    );
-  (frag2can_smi_id, dists)
-
 (* save fragments dictionary w/ updated distributions to file *)
 let save_fragments_dict frag2can_smi_id dists fn =
   (* sort fragments by (id, smi) *)
@@ -601,22 +496,6 @@ let save_fragments_dict frag2can_smi_id dists fn =
           fprintf out "%s\t%s\t%d\t%f\t%f\n" smi can_smi id dist.mu dist.sigma
         ) arr
     )
-
-(* update the Gaussian score distribution for each fragment
-   [s2] is the initial guess for the variance of all fragments *)
-let update_gaussians s2 frag2can_smi_id dists smi_name_scores: unit =
-  L.iter (fun (smi, _mol_name, score) ->
-      L.iter (fun frag ->
-          (* all fragments are supposed to be in the frags dictionary *)
-          let _can_smi, id =
-            try Ht.find frag2can_smi_id frag with
-            | Not_found ->
-              (Log.fatal "Fasmifra.update_gaussians: frag not in Ht: %s"
-                 (string_of_tokens frag);
-               exit 1) in
-          dists.(id) <- update_gaussian dists.(id) s2 score
-        ) (list_fragments smi)
-    ) smi_name_scores
 
 let main () =
   let start = Unix.gettimeofday () in
@@ -695,11 +574,10 @@ let main () =
         let () = Log.fatal "-ofd would overwrite -ifd" in
         exit 1
       else
-        let ht, dists = load_fragments_dict maybe_init_dist in_fn in
-        (ht, dists, out_fn) in
+        failwith "-ifd and -ofd not implemented yet" in
   let choose_frag =
     if use_TS then
-      thompson_max dists frag2can_smi_id
+      failwith "TS: not implemented yet"
     else
       uniform_random in
   let assemble =
@@ -718,16 +596,16 @@ let main () =
    | None -> ()
    | Some scores_fn ->
      let () = Log.info "reading scores from %s" scores_fn in
-     let smi_name_scores = load_scores input_frags_fn scores_fn in
+     let _smi_name_scores = load_scores input_frags_fn scores_fn in
      match maybe_init_dist with
      | None ->
        let () = Log.fatal "--scores requires -mu and -sigma" in
        exit 1
      | Some init_dist ->
        (* global variance *)
-       let s2 = init_dist.sigma *. init_dist.sigma in
+       let _s2 = init_dist.sigma *. init_dist.sigma in
        let () = Log.info "updating gaussians" in
-       update_gaussians s2 frag2can_smi_id dists smi_name_scores;
+       (* update_gaussians s2 gaussians_ht smi_name_scores; *)
        let () = Log.info "writing updated frags dict. to %s" frags_dict_out_fn in
        save_fragments_dict frag2can_smi_id dists frags_dict_out_fn
   );
