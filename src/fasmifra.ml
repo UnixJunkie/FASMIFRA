@@ -368,6 +368,19 @@ let update_gaussians dists_ht s2 score frag_ids =
 let uniform_random rng n =
   BatRandom.State.int rng n
 
+(* for maximization *)
+let thompson_max dists rng _n =
+  let samples = A.map (gauss rng) dists in
+  let maxi = A.max samples in
+  let candidates = ref [] in
+  A.iteri (fun i sample ->
+      if sample = maxi then
+        candidates := i :: !candidates
+    ) samples;
+  let cands = A.of_list !candidates in
+  let i = uniform_random rng (A.length cands) in
+  A.unsafe_get cands i
+
 let assemble_smiles_fragments choose_frag_idx rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
@@ -625,8 +638,7 @@ let main () =
         assemble_deepsmiles_fragments
     else (* use SMILES *)
     if preserve_cut_bonds then
-      (* assemble_smiles_fragments_PCB *)
-      failwith "not implemented yet"
+      assemble_smiles_fragments_PCB
     else
       assemble_smiles_fragments in
   (match maybe_scores_fn with
