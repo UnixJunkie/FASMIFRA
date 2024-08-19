@@ -278,6 +278,30 @@ let index_fragments maybe_out_fn named_smiles =
   );
   (seeds, ht)
 
+(* unique identifier for each fragment *)
+type frag_id = { i_j: int * int; (* cut bond type;
+                                    (-1,-1) for seeds by convention *)
+                 k: int } (* index in array for that cut bond type *)
+
+let seed_frag_key = (-1, -1) (* fixed by convention *)
+
+(* a Gaussian distribution *)
+type dist = { mu: float;
+              sigma: float }
+
+let initialize_gaussians seeds_a branches_ht mu sigma =
+  let init_dist = { mu; sigma } in  
+  let res = Ht.create (1 + Ht.length branches_ht) in
+  (* gaussians for seed fragments *)
+  Ht.add res (-1, -1) (let num_seeds = A.length seeds_a in
+                       A.make num_seeds init_dist);
+  (* gaussians for branch fragments *)
+  Ht.iter (fun i_j branches ->
+      let num_frags = A.length branches in
+      Ht.add res i_j (A.make num_frags init_dist)
+    ) branches_ht;
+  res
+
 let rev_renumber_ring_closures ht i tokens =
   let res =
     L.rev_map (function
@@ -292,10 +316,6 @@ let almost_one = Float.pred 1.0
 let _ = assert(almost_one < 1.0)
 let pi = 4.0 *. (atan 1.0)
 let two_pi = 2.0 *. pi
-
-(* a Gaussian distribution *)
-type dist = { mu: float;
-              sigma: float }
 
 (* [gauss mu sigma] get one float from the normal distribution
    with mean=mu and stddev=sigma
