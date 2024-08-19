@@ -289,8 +289,9 @@ let seed_frag_key = (-1, -1) (* fixed by convention *)
 type dist = { mu: float;
               sigma: float }
 
+(* attach a distribution to each seed and each branch fragment *)
 let initialize_gaussians seeds_a branches_ht mu sigma =
-  let init_dist = { mu; sigma } in  
+  let init_dist = { mu; sigma } in
   let res = Ht.create (1 + Ht.length branches_ht) in
   (* gaussians for seed fragments *)
   Ht.add res (-1, -1) (let num_seeds = A.length seeds_a in
@@ -339,6 +340,14 @@ let update_gaussian d_t s2 x_t =
   let denom = s2_t +. s2 in
   { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
     sigma = (s2_t *. s2) /. denom }
+
+(* for one molecule whose composition is known,
+ * (seed and fragments ids), update impacted beliefs *)
+let update_gaussians dists_ht s2 score frag_ids =
+  L.iter (fun frag_id ->
+      let arr = Ht.find dists_ht frag_id.i_j in
+      arr.(frag_id.k) <- update_gaussian arr.(frag_id.k) s2 score
+    ) frag_ids
 
 (* default fragment sampling policy for training-set distribution matching *)
 let uniform_random _none rng frags =
