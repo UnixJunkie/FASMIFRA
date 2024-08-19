@@ -279,8 +279,6 @@ let index_fragments maybe_out_fn named_smiles =
   );
   (seeds, ht)
 
-let seed_frag_key = (-1, -1) (* by convention *)
-
 (* unique identifier for each fragment *)
 type frag_id = { i_j: int * int; (* cut bond type;
                                     (-1,-1) for seeds by convention *)
@@ -365,27 +363,29 @@ let update_gaussians dists_ht s2 score frag_ids =
     ) frag_ids
 
 (* default fragment sampling policy for training-set distribution matching *)
-let uniform_random rng n =
+let uniform_random rng _ij n =
   BatRandom.State.int rng n
 
 (* for maximization *)
-let thompson_max dists rng _n =
+let thompson_max ij2dists rng ij _n =
+  let dists = Ht.find ij2dists ij in
   let samples = A.map (gauss rng) dists in
   let maxi = A.max samples in
+  (* uniform random choice among fragments that scored best *)
   let candidates = ref [] in
   A.iteri (fun i sample ->
       if sample = maxi then
         candidates := i :: !candidates
     ) samples;
   let cands = A.of_list !candidates in
-  let i = uniform_random rng (A.length cands) in
+  let i = uniform_random rng (-1,-1) (A.length cands) in
   A.unsafe_get cands i
 
 let assemble_smiles_fragments choose_frag_idx rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let k = choose_frag_idx rng (A.length seeds) in
+    let k = choose_frag_idx rng (-1,-1) (A.length seeds) in
     let chosen = A.unsafe_get seeds k in
     (* Log.error "chosen seed: %s" (string_of_tokens chosen); *)
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
@@ -397,7 +397,7 @@ let assemble_smiles_fragments choose_frag_idx rng seeds branches =
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let k = choose_frag_idx rng (A.length possible_branches) in
+          let k = choose_frag_idx rng (i, j) (A.length possible_branches) in
           let chosen = A.unsafe_get possible_branches k in
           (* Log.error "chosen branch: %s" (string_of_tokens chosen); *)
           rev_renumber_ring_closures ht frag_count chosen in
@@ -415,7 +415,7 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let k = choose_frag_idx rng (A.length seeds) in
+    let k = choose_frag_idx rng (-1,-1) (A.length seeds) in
     let chosen = A.unsafe_get seeds k in
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   let rec loop acc tokens = match tokens with
@@ -425,7 +425,7 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng seeds branches =
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let k = choose_frag_idx rng (A.length possible_branches) in
+          let k = choose_frag_idx rng (i, j) (A.length possible_branches) in
           let chosen = A.unsafe_get possible_branches k in
           rev_renumber_ring_closures ht frag_count chosen in
         (* preserve cut bond [x] here *)
@@ -435,20 +435,20 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng seeds branches =
   loop [] seed_frag
 
 (* almost copy/paste of assemble_smiles_fragments *)
-let assemble_deepsmiles_fragments choose_frag rng seeds branches =
+let assemble_deepsmiles_fragments choose_frag_idx rng seeds branches =
   let rec loop acc tokens = match tokens with
     | [] -> L.rev acc
     | x :: xs ->
       match x with
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
-        let k = choose_frag rng (A.length possible_branches) in
+        let k = choose_frag_idx rng (i, j) (A.length possible_branches) in
         let branch = A.unsafe_get possible_branches k in
         (* typed cut bond discarded here *)
         loop acc (L.append branch xs)
       | _  -> loop (x :: acc) xs
   in
-  let k = choose_frag rng (A.length seeds) in
+  let k = choose_frag_idx rng (-1,-1) (A.length seeds) in
   let seed_frag = A.unsafe_get seeds k in
   loop [] seed_frag
 
@@ -612,7 +612,7 @@ let main () =
   let maybe_init_dist, use_TS = match (maybe_mu, maybe_sigma) with
     | (Some mu, Some sigma) -> (Some { mu; sigma }, true)
     | _ -> (None, false) in
-  let _ij2dists, frags_dict_out_fn =
+  let ij2dists, frags_dict_out_fn =
     match (maybe_frags_dict_in_fn, maybe_frags_dict_out_fn) with
     | (None, None) -> (Ht.create 0, "/dev/null")
     | (_, None) | (None, _) ->
@@ -626,7 +626,7 @@ let main () =
         (load_gaussians in_fn, out_fn) in
   let choose_frag =
     if use_TS then
-      failwith "TS: not implemented yet"
+      thompson_max ij2dists
     else
       uniform_random in
   let assemble =
