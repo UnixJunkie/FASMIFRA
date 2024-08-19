@@ -288,8 +288,16 @@ let string_of_frag_id x =
   let i, j = x.i_j in
   sprintf "%d-%d:%d" i j x.k
 
+let string_of_frag_ids l =
+  (* a molecule is supposed to be made only of a handful
+     of fragments, so this is OK *)
+  S.concat "," (L.rev_map string_of_frag_id l)
+
 let frag_id_of_string x =
-  Scanf.sscanf "%d-%d:%d" x (fun i j k -> { i_j = (i, j); k })
+  Scanf.sscanf x "%d-%d:%d" (fun i j k -> { i_j = (i, j); k })
+
+let frag_ids_of_string s =
+  L.map frag_id_of_string (S.split_on_char ',' s)
 
 (* a Gaussian distribution *)
 type dist = { mu: float;
@@ -679,9 +687,12 @@ let main () =
       while !i < n do
         try
           let rng' = get_rng rng in
-          let tokens, _frag_ids = assemble choose_frag rng' seed_fragments frags_ht in
+          let tokens, frag_ids = assemble choose_frag rng' seed_fragments frags_ht in
           fprintf_tokens out tokens;
-          fprintf out "\tgenmol_%d\n" !i;
+          (match frag_ids with
+           | [] -> fprintf out "\tgenmol_%d\n" !i
+           | _ -> fprintf out "\t%s\n" (string_of_frag_ids frag_ids)
+          );
           incr i
         with Too_many_rings -> () (* skip it *)
       done
