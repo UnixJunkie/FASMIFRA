@@ -15,6 +15,7 @@ module ISet = BatSet.Int
 module L = BatList
 module LO = Line_oriented
 module Log = Dolog.Log
+module S = BatString
 
 type input_smi_token = Open_paren
                      | Close_paren
@@ -296,6 +297,13 @@ let frag_id_of_string x =
 type dist = { mu: float;
               sigma: float }
 
+let string_of_dist d =
+  (* think about m+/-s, but shorter *)
+  sprintf "%g/%g" d.mu d.sigma
+
+let dist_of_string s =
+  Scanf.sscanf s "%f/%f" (fun mu sigma -> { mu; sigma })
+
 (* attach a distribution to each seed and each branch fragment *)
 let initialize_gaussians seeds_a branches_ht mu sigma =
   let init_dist = { mu; sigma } in
@@ -486,19 +494,44 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
     index_fragments maybe_out_fn input_frags
 
 (* fragments dictionary header line *)
-let dict_header = "#frag_id\tmean\tstddev"
+let dict_header = "#i_j:mean_stddevs"
 
 (* save distributions to file *)
 let save_gaussians ht fn =
   LO.with_out_file fn (fun out ->
       fprintf out "%s\n" dict_header;
       Ht.iter (fun i_j arr ->
+          let i, j = i_j in
+          fprintf out "%d-%d:" i j;
           A.iteri (fun k dist ->
-              fprintf out "%s\t%f\t%f\n"
-                (string_of_frag_id { i_j; k}) dist.mu dist.sigma
+              if k > 0 then
+                fprintf out ",%g/%g" dist.mu dist.sigma
+              else
+                fprintf out "%g/%g" dist.mu dist.sigma
             ) arr
         ) ht
     )
+
+let load_gaussians fn =
+  let lines = LO.lines_of_file fn in
+  match lines with
+  | [] -> assert false
+  | header :: body ->
+    assert(header = dict_header);
+    let num_bindings = L.length body in
+    let res = Ht.create num_bindings in
+    L.iter (fun line ->
+        let i, j, mean_sigmas = 
+          Scanf.sscanf line "%d-%d:%s" (fun i j rest -> (i, j, rest)) in
+        let mean_sigmas = S.split_on_char ',' mean_sigmas in
+        let num_dists = L.length mean_sigmas in
+        let dists = A.make num_dists { mu = nan; sigma = nan } in
+        L.iteri (fun i mean_sigma ->
+            dists.(i) <- dist_of_string mean_sigma
+          ) mean_sigmas;
+        Ht.add res (i, j) dists
+      ) body;
+    res
 
 let main () =
   let start = Unix.gettimeofday () in
