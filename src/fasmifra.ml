@@ -278,12 +278,19 @@ let index_fragments maybe_out_fn named_smiles =
   );
   (seeds, ht)
 
+let seed_frag_key = (-1, -1) (* by convention *)
+
 (* unique identifier for each fragment *)
 type frag_id = { i_j: int * int; (* cut bond type;
                                     (-1,-1) for seeds by convention *)
                  k: int } (* index in array for that cut bond type *)
 
-let seed_frag_key = (-1, -1) (* fixed by convention *)
+let string_of_frag_id x =
+  let i, j = x.i_j in
+  sprintf "%d-%d:%d" i j x.k
+
+let frag_id_of_string x =
+  Scanf.sscanf "%d-%d:%d" x (fun i j k -> { i_j = (i, j); k })
 
 (* a Gaussian distribution *)
 type dist = { mu: float;
