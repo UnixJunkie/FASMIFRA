@@ -350,14 +350,20 @@ let update_gaussians dists_ht s2 score frag_ids =
     ) frag_ids
 
 (* default fragment sampling policy for training-set distribution matching *)
-let uniform_random _none rng frags =
+let uniform_random rng _i_j frags =
   A.unsafe_get frags (BatRandom.State.int rng (A.length frags))
+
+(* uniform random policy, but keeps track of the molecule's composition *)
+let uniform_random_memo rng frag_ids i_j frags =
+  let k = BatRandom.State.int rng (A.length frags) in
+  frag_ids := { i_j; k } :: !frag_ids;
+  A.unsafe_get frags k
 
 let assemble_smiles_fragments choose_frag rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = choose_frag None rng seeds in
+    let chosen = choose_frag rng seed_frag_key seeds in
     (* Log.error "chosen seed: %s" (string_of_tokens chosen); *)
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   (* Log.error "renumbered seed: %s" (string_of_tokens seed_frag); *)
@@ -365,10 +371,10 @@ let assemble_smiles_fragments choose_frag rng seeds branches =
     | [] -> L.rev acc
     | x :: xs ->
       match x with
-      | (Cut_bond (i, j)) as c_ij ->
+      | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = choose_frag (Some c_ij) rng possible_branches in
+          let chosen = choose_frag rng (i, j) possible_branches in
           (* Log.error "chosen branch: %s" (string_of_tokens chosen); *)
           rev_renumber_ring_closures ht frag_count chosen in
         (* Log.error "renumbered branch: %s" (string_of_tokens (L.rev branch)); *)
@@ -385,16 +391,16 @@ let assemble_smiles_fragments_PCB choose_frag rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = choose_frag None rng seeds in
+    let chosen = choose_frag rng seed_frag_key seeds in
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   let rec loop acc tokens = match tokens with
     | [] -> L.rev acc
     | x :: xs ->
       match x with
-      | (Cut_bond (i, j)) as c_ij ->
+      | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = choose_frag (Some c_ij) rng possible_branches in
+          let chosen = choose_frag rng (i, j) possible_branches in
           rev_renumber_ring_closures ht frag_count chosen in
         (* preserve cut bond [x] here *)
         loop (x :: acc) (L.rev_append branch xs)
@@ -408,14 +414,14 @@ let assemble_deepsmiles_fragments choose_frag rng seeds branches =
     | [] -> L.rev acc
     | x :: xs ->
       match x with
-      | (Cut_bond (i, j)) as c_ij ->
+      | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
-        let branch = choose_frag (Some c_ij) rng possible_branches in
+        let branch = choose_frag rng (i, j) possible_branches in
         (* typed cut bond discarded here *)
         loop acc (L.append branch xs)
       | _  -> loop (x :: acc) xs
   in
-  let seed_frag = choose_frag None rng seeds in
+  let seed_frag = choose_frag rng seed_frag_key seeds in
   loop [] seed_frag
 
 type rng_style = Performance
