@@ -365,20 +365,15 @@ let update_gaussians dists_ht s2 score frag_ids =
     ) frag_ids
 
 (* default fragment sampling policy for training-set distribution matching *)
-let uniform_random rng _i_j frags =
-  A.unsafe_get frags (BatRandom.State.int rng (A.length frags))
+let uniform_random rng n =
+  BatRandom.State.int rng n
 
-(* uniform random policy, but keeps track of the molecule's composition *)
-let uniform_random_memo rng frag_ids i_j frags =
-  let k = BatRandom.State.int rng (A.length frags) in
-  frag_ids := { i_j; k } :: !frag_ids;
-  A.unsafe_get frags k
-
-let assemble_smiles_fragments choose_frag rng seeds branches =
+let assemble_smiles_fragments choose_frag_idx rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = choose_frag rng seed_frag_key seeds in
+    let k = choose_frag_idx rng (A.length seeds) in
+    let chosen = A.unsafe_get seeds k in
     (* Log.error "chosen seed: %s" (string_of_tokens chosen); *)
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   (* Log.error "renumbered seed: %s" (string_of_tokens seed_frag); *)
@@ -389,7 +384,8 @@ let assemble_smiles_fragments choose_frag rng seeds branches =
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = choose_frag rng (i, j) possible_branches in
+          let k = choose_frag_idx rng (A.length possible_branches) in
+          let chosen = A.unsafe_get possible_branches k in
           (* Log.error "chosen branch: %s" (string_of_tokens chosen); *)
           rev_renumber_ring_closures ht frag_count chosen in
         (* Log.error "renumbered branch: %s" (string_of_tokens (L.rev branch)); *)
@@ -402,11 +398,12 @@ let assemble_smiles_fragments choose_frag rng seeds branches =
 (* like assemble_smiles_fragments, but "Preserve Cut Bonds" (PCB).
    To output generated molecules w/ cut bonds preserved; so that
    generated molecules do not need to be fragmented later on *)
-let assemble_smiles_fragments_PCB choose_frag rng seeds branches =
+let assemble_smiles_fragments_PCB choose_frag_idx rng seeds branches =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
-    let chosen = choose_frag rng seed_frag_key seeds in
+    let k = choose_frag_idx rng (A.length seeds) in
+    let chosen = A.unsafe_get seeds k in
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   let rec loop acc tokens = match tokens with
     | [] -> L.rev acc
@@ -415,7 +412,8 @@ let assemble_smiles_fragments_PCB choose_frag rng seeds branches =
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
         let branch =
-          let chosen = choose_frag rng (i, j) possible_branches in
+          let k = choose_frag_idx rng (A.length possible_branches) in
+          let chosen = A.unsafe_get possible_branches k in
           rev_renumber_ring_closures ht frag_count chosen in
         (* preserve cut bond [x] here *)
         loop (x :: acc) (L.rev_append branch xs)
@@ -431,12 +429,14 @@ let assemble_deepsmiles_fragments choose_frag rng seeds branches =
       match x with
       | Cut_bond (i, j) ->
         let possible_branches = Ht.find branches (i, j) in
-        let branch = choose_frag rng (i, j) possible_branches in
+        let k = choose_frag rng (A.length possible_branches) in
+        let branch = A.unsafe_get possible_branches k in
         (* typed cut bond discarded here *)
         loop acc (L.append branch xs)
       | _  -> loop (x :: acc) xs
   in
-  let seed_frag = choose_frag rng seed_frag_key seeds in
+  let k = choose_frag rng (A.length seeds) in
+  let seed_frag = A.unsafe_get seeds k in
   loop [] seed_frag
 
 type rng_style = Performance
@@ -599,9 +599,9 @@ let main () =
   let maybe_init_dist, use_TS = match (maybe_mu, maybe_sigma) with
     | (Some mu, Some sigma) -> (Some { mu; sigma }, true)
     | _ -> (None, false) in
-  let _frag2can_smi_id, _dists, frags_dict_out_fn =
+  let _ij2dists, frags_dict_out_fn =
     match (maybe_frags_dict_in_fn, maybe_frags_dict_out_fn) with
-    | (None, None) -> (Ht.create 0, [||], "/dev/null")
+    | (None, None) -> (Ht.create 0, "/dev/null")
     | (_, None) | (None, _) ->
       let () = Log.fatal "provide -ifd and -ofd" in
       exit 1
@@ -610,7 +610,7 @@ let main () =
         let () = Log.fatal "-ofd would overwrite -ifd" in
         exit 1
       else
-        failwith "-ifd and -ofd not implemented yet" in
+        (load_gaussians in_fn, out_fn) in
   let choose_frag =
     if use_TS then
       failwith "TS: not implemented yet"
@@ -625,7 +625,8 @@ let main () =
         assemble_deepsmiles_fragments
     else (* use SMILES *)
     if preserve_cut_bonds then
-      assemble_smiles_fragments_PCB
+      (* assemble_smiles_fragments_PCB *)
+      failwith "not implemented yet"
     else
       assemble_smiles_fragments in
   (match maybe_scores_fn with
