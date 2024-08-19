@@ -302,7 +302,10 @@ let string_of_dist d =
 let dist_of_string s =
   Scanf.sscanf s "%f/%f" (fun mu sigma -> { mu; sigma })
 
-(* attach a distribution to each seed and each branch fragment *)
+(* attach a distribution to each seed and each branch fragment
+   we should do this only at the first iteration:
+   -mu and -sigma are provided; no -ig
+   in subsequent iterations: -sigma and -ig are provided *)
 let initialize_gaussians seeds_a branches_ht mu sigma =
   let init_dist = { mu; sigma } in
   let res = Ht.create (1 + Ht.length branches_ht) in
@@ -406,17 +409,21 @@ let assemble_smiles_fragments choose_frag_idx rng seeds branches =
         loop acc (L.rev_append branch xs)
       | _  -> loop (x :: acc) xs
   in
-  loop [] seed_frag
+  (loop [] seed_frag, [])
 
 (* like assemble_smiles_fragments, but "Preserve Cut Bonds" (PCB).
    To output generated molecules w/ cut bonds preserved; so that
-   generated molecules do not need to be fragmented later on *)
+   generated molecules do not need to be fragmented later on.
+   Also, keep track of the fragments making the molecule. *)
 let assemble_smiles_fragments_PCB choose_frag_idx rng seeds branches =
+  (* keep track of the fragments making the molecule *)
+  let frag_ids = ref [] in
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let seed_frag =
     let k = choose_frag_idx rng (-1,-1) (A.length seeds) in
     let chosen = A.unsafe_get seeds k in
+    frag_ids := { i_j = (-1,-1); k } :: !frag_ids;
     L.rev (rev_renumber_ring_closures ht frag_count chosen) in
   let rec loop acc tokens = match tokens with
     | [] -> L.rev acc
@@ -427,12 +434,13 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng seeds branches =
         let branch =
           let k = choose_frag_idx rng (i, j) (A.length possible_branches) in
           let chosen = A.unsafe_get possible_branches k in
+          frag_ids := { i_j = (i,j); k } :: !frag_ids;
           rev_renumber_ring_closures ht frag_count chosen in
         (* preserve cut bond [x] here *)
         loop (x :: acc) (L.rev_append branch xs)
       | _  -> loop (x :: acc) xs
   in
-  loop [] seed_frag
+  (loop [] seed_frag, !frag_ids)
 
 (* almost copy/paste of assemble_smiles_fragments *)
 let assemble_deepsmiles_fragments choose_frag_idx rng seeds branches =
@@ -450,7 +458,7 @@ let assemble_deepsmiles_fragments choose_frag_idx rng seeds branches =
   in
   let k = choose_frag_idx rng (-1,-1) (A.length seeds) in
   let seed_frag = A.unsafe_get seeds k in
-  loop [] seed_frag
+  (loop [] seed_frag, [])
 
 type rng_style = Performance
                | Repeatable
@@ -671,7 +679,7 @@ let main () =
       while !i < n do
         try
           let rng' = get_rng rng in
-          let tokens = assemble choose_frag rng' seed_fragments frags_ht in
+          let tokens, _frag_ids = assemble choose_frag rng' seed_fragments frags_ht in
           fprintf_tokens out tokens;
           fprintf out "\tgenmol_%d\n" !i;
           incr i
