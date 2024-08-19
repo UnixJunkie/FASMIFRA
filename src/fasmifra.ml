@@ -486,57 +486,18 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
     index_fragments maybe_out_fn input_frags
 
 (* fragments dictionary header line *)
-let dict_header = "#smi\tcan_smi\tid\tmean\tstddev"
+let dict_header = "#frag_id\tmean\tstddev"
 
-(* count the number of unique fragment ids in [fn] *)
-let num_ids_in_frags_dict fn =
-  let lines = LO.lines_of_file fn in
-  match lines with
-  | [] -> assert false
-  | header :: other_lines ->
-    (* enforce expected format *)
-    assert(header = dict_header);
-    let ids =
-      L.fold_left (fun acc line ->
-          try Scanf.sscanf line "%s@\t%s@\t%d\t%s@\t%s"
-                (fun _smi _can_smi id _mu _sigma ->
-                   ISet.add id acc)
-          with exn ->
-            (Log.fatal "Fasmifra.load_frag_ids_from_frags_dict: \
-                        cannot parse: %s" line;
-             raise exn)
-        ) ISet.empty other_lines in
-    assert(ISet.min_elt ids = 0);
-    let n = ISet.cardinal ids in
-    assert(ISet.max_elt ids = n - 1);
-    Log.info "%s: %d unique fragments" fn n;
-    n
-
-(* save fragments dictionary w/ updated distributions to file *)
-let save_fragments_dict frag2can_smi_id dists fn =
-  (* sort fragments by (id, smi) *)
-  let n = Ht.length frag2can_smi_id in
-  let arr = A.make n ("", "", -1) in
-  let i = ref 0 in
-  Ht.iter (fun frag (can_smi, id) ->
-      let frag_smi = string_of_tokens frag in
-      arr.(!i) <- (frag_smi, can_smi, id);
-      incr i
-    ) frag2can_smi_id;
-  A.sort (fun (smi0, _can_smi0, id0) (smi1, _can_smi1, id1) ->
-      if id0 < id1 then
-        -1
-      else if id0 > id1 then
-        1
-      else (* id0 = id1 *)
-        BatString.compare smi0 smi1
-    ) arr;
+(* save distributions to file *)
+let save_gaussians ht fn =
   LO.with_out_file fn (fun out ->
       fprintf out "%s\n" dict_header;
-      A.iter (fun (smi, can_smi, id) ->
-          let dist = dists.(id) in
-          fprintf out "%s\t%s\t%d\t%f\t%f\n" smi can_smi id dist.mu dist.sigma
-        ) arr
+      Ht.iter (fun i_j arr ->
+          A.iteri (fun k dist ->
+              fprintf out "%s\t%f\t%f\n"
+                (string_of_frag_id { i_j; k}) dist.mu dist.sigma
+            ) arr
+        ) ht
     )
 
 let main () =
@@ -605,7 +566,7 @@ let main () =
   let maybe_init_dist, use_TS = match (maybe_mu, maybe_sigma) with
     | (Some mu, Some sigma) -> (Some { mu; sigma }, true)
     | _ -> (None, false) in
-  let frag2can_smi_id, dists, frags_dict_out_fn =
+  let _frag2can_smi_id, _dists, frags_dict_out_fn =
     match (maybe_frags_dict_in_fn, maybe_frags_dict_out_fn) with
     | (None, None) -> (Ht.create 0, [||], "/dev/null")
     | (_, None) | (None, _) ->
@@ -649,7 +610,8 @@ let main () =
        let () = Log.info "updating gaussians" in
        (* update_gaussians s2 gaussians_ht smi_name_scores; *)
        let () = Log.info "writing updated frags dict. to %s" frags_dict_out_fn in
-       save_fragments_dict frag2can_smi_id dists frags_dict_out_fn
+       (* save_fragments_dict frag2can_smi_id dists frags_dict_out_fn *)
+       ()
   );
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
