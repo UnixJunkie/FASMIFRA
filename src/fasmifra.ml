@@ -310,23 +310,6 @@ let string_of_dist d =
 let dist_of_string s =
   Scanf.sscanf s "%f/%f" (fun mu sigma -> { mu; sigma })
 
-(* attach a distribution to each seed and each branch fragment
-   we should do this only at the first iteration:
-   -mu and -sigma are provided; no -ig
-   in subsequent iterations: -sigma and -ig are provided *)
-let initialize_gaussians seeds_a branches_ht mu sigma =
-  let init_dist = { mu; sigma } in
-  let res = Ht.create (1 + Ht.length branches_ht) in
-  (* gaussians for seed fragments *)
-  Ht.add res (-1, -1) (let num_seeds = A.length seeds_a in
-                       A.make num_seeds init_dist);
-  (* gaussians for branch fragments *)
-  Ht.iter (fun i_j branches ->
-      let num_frags = A.length branches in
-      Ht.add res i_j (A.make num_frags init_dist)
-    ) branches_ht;
-  res
-
 let rev_renumber_ring_closures ht i tokens =
   let res =
     L.rev_map (function
@@ -533,7 +516,8 @@ let save_gaussians ht fn =
                 fprintf out ",%g/%g" dist.mu dist.sigma
               else
                 fprintf out "%g/%g" dist.mu dist.sigma
-            ) arr
+            ) arr;
+          fprintf out "\n" (* terminate this record *)
         ) ht
     )
 
@@ -546,7 +530,7 @@ let load_gaussians fn =
     let num_bindings = L.length body in
     let res = Ht.create num_bindings in
     L.iter (fun line ->
-        let i, j, mean_sigmas = 
+        let i, j, mean_sigmas =
           Scanf.sscanf line "%d-%d:%s" (fun i j rest -> (i, j, rest)) in
         let mean_sigmas = S.split_on_char ',' mean_sigmas in
         let num_dists = L.length mean_sigmas in
