@@ -497,16 +497,6 @@ let load_scores (smi_fn: string) (scores_fn: string):
       (smi, name, score)
     ) smi_names name_scores
 
-(* marshal x to file *)
-let save fn x =
-  LO.with_out_file fn (fun out ->
-      Marshal.to_channel out x [Marshal.No_sharing]
-    )
-
-(* unmarshal x from file *)
-let restore fn =
-  LO.with_in_file fn Marshal.from_channel
-
 let cache_indexed_fragments force frags_fn seed_frags_frags_ht_pair =
   let cache_fn = frags_fn ^ ".bin_cache" in
   if not (Sys.file_exists cache_fn) || force then
@@ -515,7 +505,7 @@ let cache_indexed_fragments force frags_fn seed_frags_frags_ht_pair =
         Log.warn "overwriting indexed fragments cache: %s" cache_fn
       else
         Log.info "creating indexed fragments cache: %s" cache_fn in
-    save cache_fn seed_frags_frags_ht_pair
+    LO.save cache_fn seed_frags_frags_ht_pair
   else
     Log.warn "cache file already exists (use -f to overwrite): %s" cache_fn
 
@@ -523,7 +513,7 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
   let cache_fn = frags_fn ^ ".bin_cache" in
   if (not force) && Sys.file_exists cache_fn then
     let () = Log.info "reading indexed fragments from cache: %s" cache_fn in
-    restore cache_fn
+    LO.restore cache_fn
   else
     let input_frags = LO.map frags_fn parse_SMILES_line in
     index_fragments maybe_out_fn input_frags
@@ -577,6 +567,8 @@ let main () =
   (* CLI ------------------------------------------------------------------- *)
   let argc, args = CLI.init () in
   if argc = 1 then
+    (* [-mu <float>]: average score for all fragments\n *)
+    (* (initial guess; for 1st TS iteration only)\n *)
     (eprintf "usage:\n  \
               %s\n  \
               -i <filename>: input SMILES file\n  \
@@ -585,8 +577,6 @@ let main () =
               -o <filename>: output file for generated molecules\n  \
               (imcompatible w/ -of)\n  \
               -n <int>: number of molecules to generate\n  \
-              [-mu <float>]: average score for all fragments\n  \
-              (initial guess; for 1st TS iteration only)\n  \
               [-sigma <float>]: standard deviation for all fragments\n  \
               (initial guess; for all TS iterations)\n  \
               [-of <filename>]: output SMILES fragments to file\n  \
@@ -618,7 +608,7 @@ let main () =
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
-  let maybe_mu = CLI.get_float_opt ["-mu"] args in
+  (* let maybe_mu = CLI.get_float_opt ["-mu"] args in *)
   let maybe_sigma = CLI.get_float_opt ["-sigma"] args in
   let get_rng, rng = match CLI.get_int_opt ["-s";"--seed"] args with
     | None -> ((fun x -> x),
@@ -630,7 +620,7 @@ let main () =
      let () = Log.fatal "use either -o (most users) or -of" in
      exit 1
   );
-  let use_TS = Option.is_some maybe_mu || Option.is_some maybe_sigma in
+  let use_TS = Option.is_some maybe_sigma in
   let ij2dists, dists_out_fn =
     match (maybe_in_gauss_fn, maybe_out_gauss_fn) with
     | (None, None) -> (Ht.create 0, "/dev/null")
@@ -675,8 +665,9 @@ let main () =
        let () = Log.info "updating gaussians" in
        update_many_gaussians s2 ij2dists smi_name_scores;
        let () = Log.info "writing updated frags dict. to %s" dists_out_fn in
-       (* save_fragments_dict frag2can_smi_id dists dists_out_fn *)
        ()
+       (* FBR: TODO *)
+       (* save_fragments_dict frag2can_smi_id dists dists_out_fn *)
   );
   Log.info "indexing fragments";
   let seed_fragments, frags_ht =
