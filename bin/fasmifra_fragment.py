@@ -149,6 +149,7 @@ def get_cut_bonds(frag_weight, mol):
     return cut_bonds_indexes[0:max_cuts]
 
 # use BRICS instead of my simple molecular fragmentation scheme
+# WARNING: BRICS might not be cutting only single bonds
 def get_BRICS_bonds(mol):
     res = []
     for begin_end, _types in BRICS.FindBRICSBonds(mol):
