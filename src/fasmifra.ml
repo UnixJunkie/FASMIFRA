@@ -542,6 +542,25 @@ let load_gaussians fn =
       ) body;
     res
 
+(* attach a distribution to each seed and each branch fragment
+   we should do this only at the first iteration:
+   -mu and -sigma are provided; no -ig
+   in subsequent iterations: -sigma and -ig are provided *)
+let initialize_gaussians seeds_a branches_ht mu sigma =
+  let init_dist = { mu; sigma } in
+  let res = Ht.create (1 + Ht.length branches_ht) in
+  (* gaussians for seed fragments *)
+  Ht.add res (-1, -1) (let num_seeds = A.length seeds_a in
+                       A.make num_seeds init_dist);
+  (* gaussians for branch fragments *)
+  Ht.iter (fun i_j branches ->
+      let num_frags = A.length branches in
+      Ht.add res i_j (A.make num_frags init_dist)
+    ) branches_ht;
+  res
+
+(* FBR: seeds and branches could be unified in a single ht *)
+
 let main () =
   let start = Unix.gettimeofday () in
   (* Logger ---------------------------------------------------------------- *)
@@ -551,8 +570,6 @@ let main () =
   (* CLI ------------------------------------------------------------------- *)
   let argc, args = CLI.init () in
   if argc = 1 then
-    (* [-mu <float>]: average score for all fragments\n *)
-    (* (initial guess; for 1st TS iteration only)\n *)
     (eprintf "usage:\n  \
               %s\n  \
               -i <filename>: input SMILES file\n  \
@@ -561,6 +578,8 @@ let main () =
               -o <filename>: output file for generated molecules\n  \
               (imcompatible w/ -of)\n  \
               -n <int>: number of molecules to generate\n  \
+              [-mu <float>]: average score for all fragments\n  \
+              (initial guess; for 1st TS iteration only)\n  \
               [-sigma <float>]: standard deviation for all fragments\n  \
               (initial guess; for all TS iterations)\n  \
               [-of <filename>]: output SMILES fragments to file\n  \
@@ -592,7 +611,7 @@ let main () =
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
-  (* let maybe_mu = CLI.get_float_opt ["-mu"] args in *)
+  let maybe_mu = CLI.get_float_opt ["-mu"] args in
   let maybe_sigma = CLI.get_float_opt ["-sigma"] args in
   let get_rng, rng = match CLI.get_int_opt ["-s";"--seed"] args with
     | None -> ((fun x -> x),
@@ -604,24 +623,46 @@ let main () =
      let () = Log.fatal "use either -o (most users) or -of" in
      exit 1
   );
-  let use_TS = Option.is_some maybe_sigma in
+  Log.info "indexing fragments";
+  let seeds, branches =
+    let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
+    cache_indexed_fragments force input_frags_fn res;
+    res in
+  Log.info "seeds: %d; attach_types: %d"
+    (A.length seeds) (Ht.length branches);
   let ij2dists, dists_out_fn =
     match (maybe_in_gauss_fn, maybe_out_gauss_fn) with
     | (None, None) -> (Ht.create 0, "/dev/null")
-    | (_, None) | (None, _) ->
-      let () = Log.fatal "provide -ig and -og" in
+    | (_, None) ->
+      let () = Log.fatal "-ig requires -og" in
       exit 1
+    | (None, Some out_fn) ->
+      (match (maybe_mu, maybe_sigma) with
+       | (Some mu, Some sigma) ->
+         let ht = initialize_gaussians seeds branches mu sigma in
+         (ht, out_fn)
+       | _ ->
+         let () = Log.fatal "-og without -ig requires -mu and -sigma" in
+         exit 1)
     | (Some in_fn, Some out_fn) ->
       if in_fn = out_fn then
         let () = Log.fatal "-og would overwrite -ig" in
         exit 1
       else
-        (load_gaussians in_fn, out_fn) in
+        match maybe_sigma with
+        | None ->
+          let () = Log.fatal "-ig requires -sigma" in
+          exit 1
+        | Some _ ->
+          (load_gaussians in_fn, out_fn) in
   let choose_frag =
-    if use_TS then
-      thompson_max ij2dists
-    else
-      uniform_random in
+    match maybe_sigma with
+    | None ->
+      let () = Log.info "Uniform Random Sampling" in
+      uniform_random
+    | Some _ ->
+      let () = Log.info "Thompson Sampling" in
+      thompson_max ij2dists in
   let assemble =
     if use_deep_smiles then
       if preserve_cut_bonds then
@@ -649,23 +690,14 @@ let main () =
        let () = Log.info "updating gaussians" in
        update_many_gaussians s2 ij2dists smi_name_scores;
        let () = Log.info "writing updated frags dict. to %s" dists_out_fn in
-       ()
-       (* FBR: TODO *)
-       (* save_fragments_dict frag2can_smi_id dists dists_out_fn *)
+       save_gaussians ij2dists dists_out_fn
   );
-  Log.info "indexing fragments";
-  let seed_fragments, frags_ht =
-    let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
-    cache_indexed_fragments force input_frags_fn res;
-    res in
-  Log.info "seed_frags: %d; attach_types: %d"
-    (A.length seed_fragments) (Ht.length frags_ht);
   LO.with_out_file output_fn (fun out ->
       let i = ref 0 in
       while !i < n do
         try
           let rng' = get_rng rng in
-          let tokens, frag_ids = assemble choose_frag rng' seed_fragments frags_ht in
+          let tokens, frag_ids = assemble choose_frag rng' seeds branches in
           fprintf_tokens out tokens;
           (match frag_ids with
            | [] -> fprintf out "\tgenmol_%d\n" !i
