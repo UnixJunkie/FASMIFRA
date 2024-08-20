@@ -416,9 +416,10 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng frags_ht =
           else (* preserve cut bond [x] *)
             (x :: acc) in
         loop acc' (L.rev_append frag xs)
-      | _  -> loop (x :: acc) xs
-  in
-  (loop [] [Cut_bond (-1, -1)], !frag_ids)
+      | _  -> loop (x :: acc) xs in
+  (* force evaluation of res first *)
+  let res = loop [] [Cut_bond (-1, -1)] in
+  (res, !frag_ids)
 
 (* almost copy/paste of assemble_smiles_fragments *)
 let assemble_deepsmiles_fragments choose_frag_idx rng frags_ht =
