@@ -234,12 +234,12 @@ let rewrite_paren_cut_bond_smiles s =
        ) (Str.bounded_full_split paren_cut_bond_regexp s 1024)
     )
 
-let dump_branch_fragments
+let dump_fragments
     (out: out_channel)
     (cut_bond: input_smi_token)
     (frags: input_smi_token list array): unit =
   A.iter (fun tokens ->
-      (* properly outputing a branch fragment requires
+      (* properly outputing a fragment requires
          that it is prefixed by the correct cut bond *)
       fprintf_tokens out (cut_bond :: tokens);
       output_char out '\n' (* terminate fragment *)
@@ -253,13 +253,13 @@ let index_fragments maybe_out_fn named_smiles =
       let tokens = tokenize_full rewritten in
       fragment frags_ht tokens
     ) named_smiles;
-  let ht = Ht.map (fun _ij branches -> A.of_list branches) frags_ht in
+  let ht = Ht.map (fun _ij frags -> A.of_list frags) frags_ht in
   (match maybe_out_fn with
    | None -> ()
    | Some output_fn ->
      LO.with_out_file output_fn (fun out ->
-         Ht.iter (fun (i, j) branches ->
-             dump_branch_fragments out (Cut_bond (i, j)) branches
+         Ht.iter (fun (i, j) frags ->
+             dump_fragments out (Cut_bond (i, j)) frags
            ) ht
        );
      Log.info "SMILES fragments written to %s" output_fn;
@@ -377,15 +377,15 @@ let assemble_smiles_fragments choose_frag_idx rng frags_ht =
     | x :: xs ->
       match x with
       | Cut_bond (i, j) ->
-        let possible_branches = Ht.find frags_ht (i, j) in
-        let branch =
-          let k = choose_frag_idx rng (i, j) (A.length possible_branches) in
-          let chosen = A.unsafe_get possible_branches k in
-          (* Log.error "chosen branch: %s" (string_of_tokens chosen); *)
+        let possible_frags = Ht.find frags_ht (i, j) in
+        let frag =
+          let k = choose_frag_idx rng (i, j) (A.length possible_frags) in
+          let chosen = A.unsafe_get possible_frags k in
+          (* Log.error "chosen frag: %s" (string_of_tokens chosen); *)
           rev_renumber_ring_closures ht frag_count chosen in
-        (* Log.error "renumbered branch: %s" (string_of_tokens (L.rev branch)); *)
+        (* Log.error "renumbered frag: %s" (string_of_tokens (L.rev frag)); *)
         (* typed cut bond discarded here *)
-        loop acc (L.rev_append branch xs)
+        loop acc (L.rev_append frag xs)
       | _  -> loop (x :: acc) xs
   in
   (loop [] [Cut_bond (-1, -1)], [])
@@ -404,10 +404,10 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng frags_ht =
     | x :: xs ->
       match x with
       | Cut_bond (i, j) ->
-        let possible_branches = Ht.find frags_ht (i, j) in
-        let branch =
-          let k = choose_frag_idx rng (i, j) (A.length possible_branches) in
-          let chosen = A.unsafe_get possible_branches k in
+        let possible_frags = Ht.find frags_ht (i, j) in
+        let frag =
+          let k = choose_frag_idx rng (i, j) (A.length possible_frags) in
+          let chosen = A.unsafe_get possible_frags k in
           frag_ids := { i_j = (i,j); k } :: !frag_ids;
           rev_renumber_ring_closures ht frag_count chosen in
         let acc' =
@@ -415,7 +415,7 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng frags_ht =
             acc (* remove artificial seed prefix cut bond *)
           else (* preserve cut bond [x] *)
             (x :: acc) in
-        loop acc' (L.rev_append branch xs)
+        loop acc' (L.rev_append frag xs)
       | _  -> loop (x :: acc) xs
   in
   (loop [] [Cut_bond (-1, -1)], !frag_ids)
@@ -427,11 +427,11 @@ let assemble_deepsmiles_fragments choose_frag_idx rng frags_ht =
     | x :: xs ->
       match x with
       | Cut_bond (i, j) ->
-        let possible_branches = Ht.find frags_ht (i, j) in
-        let k = choose_frag_idx rng (i, j) (A.length possible_branches) in
-        let branch = A.unsafe_get possible_branches k in
+        let possible_frags = Ht.find frags_ht (i, j) in
+        let k = choose_frag_idx rng (i, j) (A.length possible_frags) in
+        let frag = A.unsafe_get possible_frags k in
         (* typed cut bond discarded here *)
-        loop acc (L.append branch xs)
+        loop acc (L.append frag xs)
       | _  -> loop (x :: acc) xs
   in
   (loop [] [Cut_bond (-1, -1)], [])
@@ -521,13 +521,13 @@ let load_gaussians fn =
       ) body;
     res
 
-(* attach a distribution to each seed and each branch fragment
+(* attach a distribution to each fragment;
    we should do this only at the first iteration:
    -mu and -sigma are provided; no -ig
-   in subsequent iterations: -sigma and -ig are provided *)
+   in subsequent iterations: -sigma and -ig are needed *)
 let initialize_gaussians frags_ht mu sigma =
-  Ht.map (fun _i_j branches ->
-      A.make (A.length branches) { mu; sigma }
+  Ht.map (fun _i_j frags ->
+      A.make (A.length frags) { mu; sigma }
     ) frags_ht
 
 let main () =
@@ -593,12 +593,12 @@ let main () =
      exit 1
   );
   Log.info "indexing fragments";
-  let branches =
+  let frags_ht =
     let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
     cache_indexed_fragments force input_frags_fn res;
     res in
   Log.info "seeds: %d; attach_types: %d"
-    (A.length (Ht.find branches (-1, -1))) (Ht.length branches - 1);
+    (A.length (Ht.find frags_ht (-1, -1))) (Ht.length frags_ht - 1);
   let ij2dists, dists_out_fn =
     match (maybe_in_gauss_fn, maybe_out_gauss_fn) with
     | (None, None) -> (Ht.create 0, "/dev/null")
@@ -608,7 +608,7 @@ let main () =
     | (None, Some out_fn) ->
       (match (maybe_mu, maybe_sigma) with
        | (Some mu, Some sigma) ->
-         let ht = initialize_gaussians branches mu sigma in
+         let ht = initialize_gaussians frags_ht mu sigma in
          (ht, out_fn)
        | _ ->
          let () = Log.fatal "-og without -ig requires -mu and -sigma" in
@@ -666,7 +666,7 @@ let main () =
       while !i < n do
         try
           let rng' = get_rng rng in
-          let tokens, frag_ids = assemble choose_frag rng' branches in
+          let tokens, frag_ids = assemble choose_frag rng' frags_ht in
           fprintf_tokens out tokens;
           (match frag_ids with
            | [] -> fprintf out "\tgenmol_%d\n" !i
