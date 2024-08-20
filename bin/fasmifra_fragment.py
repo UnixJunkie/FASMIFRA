@@ -237,7 +237,7 @@ if __name__ == '__main__':
     parser.add_argument("-n", dest = "nb_passes", default = 1,
                         type = int, help = "number of fragmentation passes")
     parser.add_argument('--brics', dest='use_brics', action='store_true', default=False,
-                        help = "use single-bonds-only BRICS)")
+                        help = "use single-bonds-only BRICS (ignores -w)")
     # 150 Da: D. Rognan's suggested max fragment weight
     parser.add_argument("-w", dest = "frag_weight", default = 150.0,
                         type = float, help = "fragment weight (default=150Da)")
