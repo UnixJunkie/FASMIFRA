@@ -149,12 +149,20 @@ def get_cut_bonds(frag_weight, mol):
     return cut_bonds_indexes[0:max_cuts]
 
 # use BRICS instead of my simple molecular fragmentation scheme
-# WARNING: BRICS might not be cutting only single bonds
-def get_BRICS_bonds(mol):
+def get_BRICS_bonds(mol, name):
     res = []
     for begin_end, _types in BRICS.FindBRICSBonds(mol):
         i, j = begin_end
-        res.append(mol.GetBondBetweenAtoms(i, j).GetIdx())
+        b = mol.GetBondBetweenAtoms(i, j)
+        b_idx = b.GetIdx()
+        bo = b.GetBondTypeAsDouble()
+        if bo == 1.0:
+            res.append(b_idx)
+        else:
+            # we only allow BRICS to cut single bonds
+            # because of FASMIFRA after
+            print('WARN: get_BRICS_bonds(%s): BO(%d) = %g' % (name, b_idx, bo),
+                  file=sys.stderr)
     return res
 
 def random_reorder_atoms(randomize, mol):
@@ -172,7 +180,7 @@ def tag_cut_bonds(use_brics, frag_weight, randomize, atom_types_dict, input_mol)
     mol = random_reorder_atoms(randomize, input_mol)
     to_cut = []
     if use_brics:
-        to_cut = get_BRICS_bonds(mol)
+        to_cut = get_BRICS_bonds(mol, name)
     else:
         to_cut = get_cut_bonds(frag_weight, mol)
     if len(to_cut) == 0:
@@ -229,7 +237,7 @@ if __name__ == '__main__':
     parser.add_argument("-n", dest = "nb_passes", default = 1,
                         type = int, help = "number of fragmentation passes")
     parser.add_argument('--brics', dest='use_brics', action='store_true', default=False,
-                        help = "use BRICS fragmentation")
+                        help = "use single-bonds-only BRICS)")
     # 150 Da: D. Rognan's suggested max fragment weight
     parser.add_argument("-w", dest = "frag_weight", default = 150.0,
                         type = float, help = "fragment weight (default=150Da)")
