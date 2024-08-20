@@ -589,8 +589,8 @@ let main () =
               (initial guess; for 1st TS iteration only)\n  \
               [-sigma <float>]: standard deviation for all fragments\n  \
               (initial guess; for all TS iterations)\n  \
-              [-of <filename>]: output fragments to SMILES file\n  \
-              (not necessarily canonical ones; incompatible w/ -o)\n  \
+              [-of <filename>]: output SMILES fragments to file\n  \
+              (not necessarily canonical SMILES; incompatible w/ -o)\n  \
               [-ig <filename>]: load (fragments') gaussians from file\n  \
               [-og <filename>]: output gaussians to file\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
@@ -599,7 +599,7 @@ let main () =
               w/ same input file)\n  \
               [--scores <filename>]: tab-separated name score file\n  \
               (molecule names and order must match the input SMILES file;\n  \
-              for Thompson sampling)\n  \
+              for Thompson Sampling)\n  \
               [--deep-smiles]: input/output molecules in DeepSMILES\n  \
               no-rings format\n"
        Sys.argv.(0);
