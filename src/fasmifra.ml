@@ -289,19 +289,19 @@ let frag_ids_of_string s =
 
 (* a Gaussian distribution *)
 type dist = { mu: float; (* mean *)
-              s: float (* std. dev. *) }
+              s2: float (* sigma^2 (variance) *) }
 
 let string_of_dist d =
   (* think about m+/-s, but shorter *)
-  sprintf "%g/%g" d.mu d.s
+  sprintf "%g/%g" d.mu d.s2
 
 let dist_of_string s =
-  Scanf.sscanf s "%f/%f" (fun mu s ->
-      if s = 0.0 then
+  Scanf.sscanf s "%f/%f" (fun mu s2 ->
+      if s2 = 0.0 then
         let () = Log.fatal "s=0" in
         exit 1
       else
-        { mu; s })
+        { mu; s2 })
 
 let rev_renumber_ring_closures ht i tokens =
   let res =
@@ -324,7 +324,7 @@ let two_pi = 2.0 *. pi
    b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below)
    cf. Python's documentation of random.gauss function *)
 let gauss rng dist =
-  dist.mu +. (dist.s *.
+  dist.mu +. ((sqrt dist.s2) *.
               (cos (two_pi *. (Random.State.float rng almost_one)) *.
                sqrt (-2.0 *. log (1.0 -. (Random.State.float rng almost_one)))))
 
@@ -336,10 +336,9 @@ let gauss rng dist =
  * [x_t]: observation for fragment i at t
  * returns the updated distribution for fragment i at t+1 *)
 let update_gaussian d_t s2 x_t =
-  let s2_t = d_t.s *. d_t.s in
-  let denom = s2_t +. s2 in
-  { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
-    s = (s2_t *. s2) /. denom }
+  let denom = d_t.s2 +. s2 in
+  { mu = ((d_t.s2 *. x_t) +. (s2 *. d_t.mu)) /. denom;
+    s2 = (d_t.s2 *. s2) /. denom }
 
 (* for one molecule whose composition is known,
  * (seed and fragments ids), update impacted beliefs *)
@@ -488,9 +487,9 @@ let save_gaussians ht fn =
           fprintf out "%d-%d:" i j;
           A.iteri (fun k dist ->
               if k > 0 then
-                fprintf out ",%g/%g" dist.mu dist.s
+                fprintf out ",%g/%g" dist.mu dist.s2
               else
-                fprintf out "%g/%g" dist.mu dist.s
+                fprintf out "%g/%g" dist.mu dist.s2
             ) arr;
           fprintf out "\n" (* terminate this record *)
         ) ht
@@ -516,10 +515,10 @@ let load_gaussians fn =
    we should do this only at the first iteration:
    -mu and -s are provided; no -ig
    in subsequent iterations: -s and -ig are needed *)
-let initialize_gaussians frags_ht mu s =
+let initialize_gaussians frags_ht mu s2 =
   Ht.map (fun _i_j frags ->
       (* !!! DO NOT use A.make !!! *)
-      A.map (fun _fid -> { mu; s }) frags
+      A.map (fun _fid -> { mu; s2 }) frags
     ) frags_ht
 
 let main () =
@@ -629,7 +628,7 @@ let main () =
        let () = Log.fatal "--scores requires -s" in
        exit 1
      | Some s ->
-       (* global variance *)
+       (* assumed global VARIANCE, given known standard deviation *)
        let s2 = s *. s in
        let () = Log.info "updating gaussians" in
        update_many_gaussians s2 ij2dists name_scores;
