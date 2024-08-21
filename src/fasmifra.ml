@@ -369,7 +369,7 @@ let thompson_max ij2dists rng ij _n =
   let i = uniform_random rng (-1, -1) (A.length cands) in
   A.unsafe_get cands i
 
-let assemble_smiles_fragments choose_frag_idx rng frags_ht =
+let assemble_smiles_fragments choose_frag_idx keep_frag_id rng frags_ht =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let rec loop acc = function
@@ -381,6 +381,7 @@ let assemble_smiles_fragments choose_frag_idx rng frags_ht =
         let frag =
           let k = choose_frag_idx rng (i, j) (A.length possible_frags) in
           let chosen = A.unsafe_get possible_frags k in
+          keep_frag_id { i_j = (i, j); k };
           (* Log.error "chosen frag: %s" (string_of_tokens chosen); *)
           rev_renumber_ring_closures ht frag_count chosen in
         (* Log.error "renumbered frag: %s" (string_of_tokens (L.rev frag)); *)
@@ -388,15 +389,13 @@ let assemble_smiles_fragments choose_frag_idx rng frags_ht =
         loop acc (L.rev_append frag xs)
       | _  -> loop (x :: acc) xs
   in
-  (loop [] [Cut_bond (-1, -1)], [])
+  loop [] [Cut_bond (-1, -1)]
 
 (* like assemble_smiles_fragments, but "Preserve Cut Bonds" (PCB).
    To output generated molecules w/ cut bonds preserved; so that
    generated molecules do not need to be fragmented later on.
    Also, keep track of the fragments making the molecule. *)
-let assemble_smiles_fragments_PCB choose_frag_idx rng frags_ht =
-  (* keep track of the fragments making the molecule *)
-  let frag_ids = ref [] in
+let assemble_smiles_fragments_PCB choose_frag_idx keep_frag_id rng frags_ht =
   let frag_count = ref 0 in
   let ht = Ht.create 97 in
   let rec loop acc = function
@@ -408,7 +407,7 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng frags_ht =
         let frag =
           let k = choose_frag_idx rng (i, j) (A.length possible_frags) in
           let chosen = A.unsafe_get possible_frags k in
-          frag_ids := { i_j = (i,j); k } :: !frag_ids;
+          keep_frag_id { i_j = (i, j); k };
           rev_renumber_ring_closures ht frag_count chosen in
         let acc' =
           if (i, j) = (-1, -1) then
@@ -417,12 +416,10 @@ let assemble_smiles_fragments_PCB choose_frag_idx rng frags_ht =
             (x :: acc) in
         loop acc' (L.rev_append frag xs)
       | _  -> loop (x :: acc) xs in
-  (* force evaluation of res first *)
-  let res = loop [] [Cut_bond (-1, -1)] in
-  (res, !frag_ids)
+  loop [] [Cut_bond (-1, -1)]
 
 (* almost copy/paste of assemble_smiles_fragments *)
-let assemble_deepsmiles_fragments choose_frag_idx rng frags_ht =
+let assemble_deepsmiles_fragments choose_frag_idx keep_frag_id rng frags_ht =
   let rec loop acc = function
     | [] -> L.rev acc
     | x :: xs ->
@@ -431,11 +428,12 @@ let assemble_deepsmiles_fragments choose_frag_idx rng frags_ht =
         let possible_frags = Ht.find frags_ht (i, j) in
         let k = choose_frag_idx rng (i, j) (A.length possible_frags) in
         let frag = A.unsafe_get possible_frags k in
+        keep_frag_id { i_j = (i, j); k };
         (* typed cut bond discarded here *)
         loop acc (L.append frag xs)
       | _  -> loop (x :: acc) xs
   in
-  (loop [] [Cut_bond (-1, -1)], [])
+  loop [] [Cut_bond (-1, -1)]
 
 type rng_style = Performance
                | Repeatable
@@ -557,6 +555,7 @@ let main () =
               [-ig <filename>]: load (fragments') gaussians from file\n  \
               [-og <filename>]: output gaussians to file\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
+              [-ufi]: use frag. ids to name molecules\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
               [-s|--seed <int>]: RNG seed (for repeatable results\n  \
               w/ same input file)\n  \
@@ -580,6 +579,7 @@ let main () =
   let maybe_out_gauss_fn = CLI.get_string_opt ["-og"] args in
   let force = CLI.get_set_bool ["-f"] args in
   let use_deep_smiles = CLI.get_set_bool ["--deep-smiles"] args in
+  let use_ids = CLI.get_set_bool ["-ufi"] args in
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
   let maybe_mu = CLI.get_float_opt ["-mu"] args in
   let maybe_sigma = CLI.get_float_opt ["-sigma"] args in
@@ -645,6 +645,11 @@ let main () =
       assemble_smiles_fragments_PCB
     else
       assemble_smiles_fragments in
+  let keep_frag_ids =
+    if use_ids then
+      (fun ids id -> ids := id :: !ids)
+    else
+      (fun _ids _id -> ()) in
   (match maybe_scores_fn with
    | None -> ()
    | Some scores_fn ->
@@ -667,11 +672,13 @@ let main () =
       while !i < n do
         try
           let rng' = get_rng rng in
-          let tokens, frag_ids = assemble choose_frag rng' frags_ht in
+          let f_ids = ref [] in
+          let tokens =
+            assemble choose_frag (keep_frag_ids f_ids) rng' frags_ht in
           fprintf_tokens out tokens;
-          (match frag_ids with
+          (match !f_ids with
            | [] -> fprintf out "\tgenmol_%d\n" !i
-           | _ -> fprintf out "\t%s\n" (string_of_frag_ids frag_ids)
+           | _ -> fprintf out "\t%s\n" (string_of_frag_ids !f_ids)
           );
           incr i
         with Too_many_rings -> () (* skip it *)
