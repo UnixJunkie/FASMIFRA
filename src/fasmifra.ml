@@ -288,20 +288,20 @@ let frag_ids_of_string s =
   L.map frag_id_of_string (S.split_on_char ',' s)
 
 (* a Gaussian distribution *)
-type dist = { mu: float;
-              sigma: float }
+type dist = { mu: float; (* mean *)
+              s: float (* std. dev. *) }
 
 let string_of_dist d =
   (* think about m+/-s, but shorter *)
-  sprintf "%g/%g" d.mu d.sigma
+  sprintf "%g/%g" d.mu d.s
 
 let dist_of_string s =
-  Scanf.sscanf s "%f/%f" (fun mu sigma ->
-      if sigma = 0.0 then
-        let () = Log.fatal "sigma=0" in
+  Scanf.sscanf s "%f/%f" (fun mu s ->
+      if s = 0.0 then
+        let () = Log.fatal "s=0" in
         exit 1
       else
-        { mu; sigma })
+        { mu; s })
 
 let rev_renumber_ring_closures ht i tokens =
   let res =
@@ -324,7 +324,7 @@ let two_pi = 2.0 *. pi
    b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below)
    cf. Python's documentation of random.gauss function *)
 let gauss rng dist =
-  dist.mu +. (dist.sigma *.
+  dist.mu +. (dist.s *.
               (cos (two_pi *. (Random.State.float rng almost_one)) *.
                sqrt (-2.0 *. log (1.0 -. (Random.State.float rng almost_one)))))
 
@@ -332,15 +332,14 @@ let gauss rng dist =
  * "Thompson Sampling-An Efficient Method for Searching Ultralarge Synthesis
  * on Demand Databases"; https://doi.org/10.1021/acs.jcim.3c01790
  * [d_t]: distribution for fragment i at time t
- * [s2]: global variance for all fragments (initial estimate)
+ * [s2]: assumed global variance for all fragments
  * [x_t]: observation for fragment i at t
  * returns the updated distribution for fragment i at t+1 *)
 let update_gaussian d_t s2 x_t =
-  let s2_t = d_t.sigma *. d_t.sigma in
+  let s2_t = d_t.s *. d_t.s in
   let denom = s2_t +. s2 in
   { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
-    (* FBR: sigma might become 0 !? *)
-    sigma = (s2_t *. s2) /. denom }
+    s = (s2_t *. s2) /. denom }
 
 (* for one molecule whose composition is known,
  * (seed and fragments ids), update impacted beliefs *)
@@ -489,9 +488,9 @@ let save_gaussians ht fn =
           fprintf out "%d-%d:" i j;
           A.iteri (fun k dist ->
               if k > 0 then
-                fprintf out ",%g/%g" dist.mu dist.sigma
+                fprintf out ",%g/%g" dist.mu dist.s
               else
-                fprintf out "%g/%g" dist.mu dist.sigma
+                fprintf out "%g/%g" dist.mu dist.s
             ) arr;
           fprintf out "\n" (* terminate this record *)
         ) ht
@@ -506,21 +505,21 @@ let load_gaussians fn =
     let num_bindings = L.length body in
     let res = Ht.create num_bindings in
     L.iter (fun line ->
-        let i, j, mean_sigmas =
+        let i, j, mean_stdevs =
           Scanf.sscanf line "%d-%d:%s" (fun i j rest -> (i, j, rest)) in
-        let dists = A.of_list (L.map dist_of_string (S.split_on_char ',' mean_sigmas)) in
+        let dists = A.of_list (L.map dist_of_string (S.split_on_char ',' mean_stdevs)) in
         Ht.add res (i, j) dists
       ) body;
     res
 
 (* attach a distribution to each fragment;
    we should do this only at the first iteration:
-   -mu and -sigma are provided; no -ig
-   in subsequent iterations: -sigma and -ig are needed *)
-let initialize_gaussians frags_ht mu sigma =
+   -mu and -s are provided; no -ig
+   in subsequent iterations: -s and -ig are needed *)
+let initialize_gaussians frags_ht mu s =
   Ht.map (fun _i_j frags ->
       (* !!! DO NOT use A.make !!! *)
-      A.map (fun _fid -> { mu; sigma }) frags
+      A.map (fun _fid -> { mu; s }) frags
     ) frags_ht
 
 let main () =
@@ -542,8 +541,8 @@ let main () =
               -n <int>: number of molecules to generate\n  \
               [-mu <float>]: average score for all fragments\n  \
               (initial guess; for 1st TS iteration only)\n  \
-              [-sigma <float>]: standard deviation for all fragments\n  \
-              (initial guess; for all TS iterations)\n  \
+              [-s <float>]: assumed standard deviation for all fragments\n  \
+              (for all TS iterations)\n  \
               [-of <filename>]: output SMILES fragments to file\n  \
               (not necessarily canonical SMILES; incompatible w/ -o)\n  \
               [-ig <filename>]: load (fragments') gaussians from file\n  \
@@ -576,7 +575,7 @@ let main () =
   let use_ids = CLI.get_set_bool ["-ufi"] args in
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
   let maybe_mu = CLI.get_float_opt ["-mu"] args in
-  let maybe_sigma = CLI.get_float_opt ["-sigma"] args in
+  let maybe_s = CLI.get_float_opt ["-s"] args in
   let get_rng, rng = match CLI.get_int_opt ["-s";"--seed"] args with
     | None -> ((fun x -> x),
                BatRandom.State.make_self_init ())
@@ -601,22 +600,22 @@ let main () =
       let () = Log.fatal "-ig requires -og" in
       exit 1
     | (None, Some out_fn) ->
-      (match (maybe_mu, maybe_sigma) with
-       | (Some mu, Some sigma) ->
+      (match (maybe_mu, maybe_s) with
+       | (Some mu, Some s) ->
          let () = Log.info "init gaussians" in
-         let ht = initialize_gaussians frags_ht mu sigma in
+         let ht = initialize_gaussians frags_ht mu s in
          (ht, out_fn)
        | _ ->
-         let () = Log.fatal "-og without -ig requires -mu and -sigma" in
+         let () = Log.fatal "-og without -ig requires -mu and -s" in
          exit 1)
     | (Some in_fn, Some out_fn) ->
       if in_fn = out_fn then
         let () = Log.fatal "-og would overwrite -ig" in
         exit 1
       else
-        match maybe_sigma with
+        match maybe_s with
         | None ->
-          let () = Log.fatal "-ig requires -sigma" in
+          let () = Log.fatal "-ig requires -s" in
           exit 1
         | Some _ ->
           (load_gaussians in_fn, out_fn) in
@@ -625,20 +624,20 @@ let main () =
    | Some scores_fn ->
      let () = Log.info "reading scores from %s" scores_fn in
      let name_scores = load_scores scores_fn in
-     match maybe_sigma with
+     match maybe_s with
      | None ->
-       let () = Log.fatal "--scores requires -sigma" in
+       let () = Log.fatal "--scores requires -s" in
        exit 1
-     | Some sigma ->
+     | Some s ->
        (* global variance *)
-       let s2 = sigma *. sigma in
+       let s2 = s *. s in
        let () = Log.info "updating gaussians" in
        update_many_gaussians s2 ij2dists name_scores;
        let () = Log.info "writing new gaussians to %s" dists_out_fn in
        save_gaussians ij2dists dists_out_fn
   );
   let choose_frag =
-    match maybe_sigma with
+    match maybe_s with
     | None ->
       let () = Log.info "Uniform Random Sampling" in
       uniform_random
