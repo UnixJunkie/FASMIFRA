@@ -485,8 +485,7 @@ let dict_header = "#i_j:mean_stddevs"
 let save_gaussians ht fn =
   LO.with_out_file fn (fun out ->
       fprintf out "%s\n" dict_header;
-      Ht.iter (fun i_j arr ->
-          let i, j = i_j in
+      Ht.iter (fun (i, j) arr ->
           fprintf out "%d-%d:" i j;
           A.iteri (fun k dist ->
               if k > 0 then
@@ -604,6 +603,7 @@ let main () =
     | (None, Some out_fn) ->
       (match (maybe_mu, maybe_sigma) with
        | (Some mu, Some sigma) ->
+         let () = Log.info "init gaussians" in
          let ht = initialize_gaussians frags_ht mu sigma in
          (ht, out_fn)
        | _ ->
@@ -620,15 +620,29 @@ let main () =
           exit 1
         | Some _ ->
           (load_gaussians in_fn, out_fn) in
+  (match maybe_scores_fn with
+   | None -> ()
+   | Some scores_fn ->
+     let () = Log.info "reading scores from %s" scores_fn in
+     let name_scores = load_scores scores_fn in
+     match maybe_sigma with
+     | None ->
+       let () = Log.fatal "--scores requires -sigma" in
+       exit 1
+     | Some sigma ->
+       (* global variance *)
+       let s2 = sigma *. sigma in
+       let () = Log.info "updating gaussians" in
+       update_many_gaussians s2 ij2dists name_scores;
+       let () = Log.info "writing new gaussians to %s" dists_out_fn in
+       save_gaussians ij2dists dists_out_fn
+  );
   let choose_frag =
     match maybe_sigma with
     | None ->
       let () = Log.info "Uniform Random Sampling" in
       uniform_random
-    | Some x ->
-      (if x <= 0.01 then
-         Log.warn "low sigma: %g" x
-      );
+    | Some _ ->
       let () = Log.info "Thompson Sampling" in
       thompson_max ij2dists in
   let assemble =
@@ -648,23 +662,6 @@ let main () =
       (fun ids id -> ids := id :: !ids)
     else
       (fun _ids _id -> ()) in
-  (match maybe_scores_fn with
-   | None -> ()
-   | Some scores_fn ->
-     let () = Log.info "reading scores from %s" scores_fn in
-     let name_scores = load_scores scores_fn in
-     match maybe_sigma with
-     | None ->
-       let () = Log.fatal "--scores requires -sigma" in
-       exit 1
-     | Some sigma ->
-       (* global variance *)
-       let s2 = sigma *. sigma in
-       let () = Log.info "updating gaussians" in
-       update_many_gaussians s2 ij2dists name_scores;
-       let () = Log.info "writing updated frags dict. to %s" dists_out_fn in
-       save_gaussians ij2dists dists_out_fn
-  );
   LO.with_out_file output_fn (fun out ->
       let i = ref 0 in
       while !i < n do
