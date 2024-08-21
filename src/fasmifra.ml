@@ -344,11 +344,11 @@ let update_gaussians dists_ht s2 score frag_ids =
       arr.(frag_id.k) <- update_gaussian arr.(frag_id.k) s2 score
     ) frag_ids
 
-let update_many_gaussians s2 ij2dists smi_name_scores =
-  L.iter (fun (_smi, mol_name, score) ->
+let update_many_gaussians s2 ij2dists name_scores =
+  L.iter (fun (mol_name, score) ->
       let frag_ids = frag_ids_of_string mol_name in
       update_gaussians ij2dists s2 score frag_ids
-    ) smi_name_scores
+    ) name_scores
 
 (* default fragment sampling policy for training-set distribution matching *)
 let uniform_random rng _ij n =
@@ -448,15 +448,8 @@ let parse_score_line line =
   with exn -> (Log.fatal "parse_score_line: malformed line: '%s'" line;
                raise exn)
 
-(* zip named SMILES with named scores *)
-let load_scores (smi_fn: string) (scores_fn: string):
-  (string * string * float) list =
-  let smi_names = LO.map smi_fn parse_SMILES_line in
-  let name_scores = LO.map scores_fn parse_score_line in
-  L.map2 (fun (smi, name) (name', score) ->
-      assert(name = name');
-      (smi, name, score)
-    ) smi_names name_scores
+let load_scores (scores_fn: string): (string * float) list =
+  LO.map scores_fn parse_score_line
 
 let cache_indexed_fragments force frags_fn frags_ht =
   let cache_fn = frags_fn ^ ".bin_cache" in
@@ -654,7 +647,7 @@ let main () =
    | None -> ()
    | Some scores_fn ->
      let () = Log.info "reading scores from %s" scores_fn in
-     let smi_name_scores = load_scores input_frags_fn scores_fn in
+     let name_scores = load_scores scores_fn in
      match maybe_sigma with
      | None ->
        let () = Log.fatal "--scores requires -sigma" in
@@ -663,7 +656,7 @@ let main () =
        (* global variance *)
        let s2 = sigma *. sigma in
        let () = Log.info "updating gaussians" in
-       update_many_gaussians s2 ij2dists smi_name_scores;
+       update_many_gaussians s2 ij2dists name_scores;
        let () = Log.info "writing updated frags dict. to %s" dists_out_fn in
        save_gaussians ij2dists dists_out_fn
   );
