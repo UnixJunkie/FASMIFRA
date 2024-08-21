@@ -623,7 +623,10 @@ let main () =
     | None ->
       let () = Log.info "Uniform Random Sampling" in
       uniform_random
-    | Some _ ->
+    | Some x ->
+      (if x <= 0.01 then
+         Log.warn "low sigma: %g" x
+      );
       let () = Log.info "Thompson Sampling" in
       thompson_max ij2dists in
   let assemble =
