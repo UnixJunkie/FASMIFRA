@@ -296,7 +296,12 @@ let string_of_dist d =
   sprintf "%g/%g" d.mu d.sigma
 
 let dist_of_string s =
-  Scanf.sscanf s "%f/%f" (fun mu sigma -> { mu; sigma })
+  Scanf.sscanf s "%f/%f" (fun mu sigma ->
+      if sigma = 0.0 then
+        let () = Log.fatal "sigma=0" in
+        exit 1
+      else
+        { mu; sigma })
 
 let rev_renumber_ring_closures ht i tokens =
   let res =
@@ -334,14 +339,15 @@ let update_gaussian d_t s2 x_t =
   let s2_t = d_t.sigma *. d_t.sigma in
   let denom = s2_t +. s2 in
   { mu = ((s2_t *. x_t) +. (s2 *. d_t.mu)) /. denom;
+    (* FBR: sigma might become 0 !? *)
     sigma = (s2_t *. s2) /. denom }
 
 (* for one molecule whose composition is known,
  * (seed and fragments ids), update impacted beliefs *)
 let update_gaussians dists_ht s2 score frag_ids =
-  L.iter (fun frag_id ->
-      let arr = Ht.find dists_ht frag_id.i_j in
-      arr.(frag_id.k) <- update_gaussian arr.(frag_id.k) s2 score
+  L.iter (fun { i_j; k } ->
+      let arr = Ht.find dists_ht i_j in
+      arr.(k) <- update_gaussian arr.(k) s2 score
     ) frag_ids
 
 let update_many_gaussians s2 ij2dists name_scores =
@@ -503,12 +509,7 @@ let load_gaussians fn =
     L.iter (fun line ->
         let i, j, mean_sigmas =
           Scanf.sscanf line "%d-%d:%s" (fun i j rest -> (i, j, rest)) in
-        let mean_sigmas = S.split_on_char ',' mean_sigmas in
-        let num_dists = L.length mean_sigmas in
-        let dists = A.make num_dists { mu = nan; sigma = nan } in
-        L.iteri (fun i mean_sigma ->
-            dists.(i) <- dist_of_string mean_sigma
-          ) mean_sigmas;
+        let dists = A.of_list (L.map dist_of_string (S.split_on_char ',' mean_sigmas)) in
         Ht.add res (i, j) dists
       ) body;
     res
@@ -519,7 +520,8 @@ let load_gaussians fn =
    in subsequent iterations: -sigma and -ig are needed *)
 let initialize_gaussians frags_ht mu sigma =
   Ht.map (fun _i_j frags ->
-      A.make (A.length frags) { mu; sigma }
+      (* !!! DO NOT use A.make !!! *)
+      A.map (fun _fid -> { mu; sigma }) frags
     ) frags_ht
 
 let main () =
