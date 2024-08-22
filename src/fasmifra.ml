@@ -483,7 +483,10 @@ let dict_header = "#i_j:mean_stddevs"
 let save_gaussians ht fn =
   LO.with_out_file fn (fun out ->
       fprintf out "%s\n" dict_header;
-      Ht.iter (fun (i, j) arr ->
+      (* always output gaussians in the same order *)
+      let key_values = A.of_list (Ht.to_list ht) in
+      A.sort (fun (k1, _v1) (k2, _v2) -> compare k1 k2) key_values;
+      A.iter (fun ((i, j), arr) ->
           fprintf out "%d-%d:" i j;
           A.iteri (fun k dist ->
               if k > 0 then
@@ -492,7 +495,7 @@ let save_gaussians ht fn =
                 fprintf out "%g/%g" dist.mu dist.s2
             ) arr;
           fprintf out "\n" (* terminate this record *)
-        ) ht
+        ) key_values
     )
 
 let load_gaussians fn =
