@@ -638,14 +638,11 @@ let main () =
        let () = Log.info "writing new gaussians to %s" dists_out_fn in
        save_gaussians ij2dists dists_out_fn
   );
-  let choose_frag =
-    match maybe_s with
-    | None ->
-      let () = Log.info "Uniform Random Sampling" in
-      uniform_random
-    | Some _ ->
-      let () = Log.info "Thompson Sampling" in
-      thompson_max ij2dists in
+  let choose_frag = match maybe_s with
+    | None -> (Log.info "Uniform Random Sampling";
+               uniform_random)
+    | Some _ -> (Log.info "Thompson Sampling";
+                 thompson_max ij2dists) in
   let assemble =
     if use_deep_smiles then
       if preserve_cut_bonds then
@@ -680,8 +677,7 @@ let main () =
         with Too_many_rings -> () (* skip it *)
       done
     );
-  let stop = Unix.gettimeofday () in
-  let dt = stop -. start in
+  let dt = Unix.gettimeofday() -. start in
   Log.info "rate: %.2f molecule/s" ((float n) /. dt)
 
 let () = main ()
