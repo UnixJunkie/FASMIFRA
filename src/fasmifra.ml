@@ -255,12 +255,12 @@ let index_fragments maybe_out_fn named_smiles =
   (match maybe_out_fn with
    | None -> ()
    | Some output_fn ->
+     Log.info "writing SMILES fragments to %s" output_fn;
      LO.with_out_file output_fn (fun out ->
          Ht.iter (fun (i, j) frags ->
              dump_fragments out (Cut_bond (i, j)) frags
            ) ht
        );
-     Log.info "SMILES fragments written to %s" output_fn;
      exit 0 (* do not try to generate molecules after this *)
   );
   ht
@@ -562,7 +562,9 @@ let handle_ig_og_cli_options maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe
       (Log.fatal "-og would overwrite -ig"; exit 1)
     else match maybe_s with
       | None -> (Log.fatal "-ig requires -s"; exit 1)
-      | Some _ -> (load_gaussians in_fn, out_fn)
+      | Some _ ->
+        (Log.info "reading gaussians from %s" in_fn;
+         (load_gaussians in_fn, out_fn))
 
 let main () =
   let start = Unix.gettimeofday () in
@@ -635,6 +637,7 @@ let main () =
     handle_ig_og_cli_options
       maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe_s frags_ht in
   handle_scores maybe_scores_fn maybe_s ij2dists dists_out_fn;
+  (* setup functional parameters ------------------------------------------- *)
   let choose_frag = match maybe_s with
     | None -> (Log.info "Uniform Random Sampling";
                uniform_random)
@@ -656,6 +659,7 @@ let main () =
       (fun ids id -> ids := id :: !ids)
     else
       (fun _ids _id -> ()) in
+  (* molecular generation -------------------------------------------------- *)
   LO.with_out_file output_fn (fun out ->
       let i = ref 0 in
       while !i < n do
