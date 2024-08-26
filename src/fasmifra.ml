@@ -460,16 +460,16 @@ let cache_indexed_fragments force frags_fn frags_ht =
   if not (Sys.file_exists cache_fn) || force then
     let () =
       if force then
-        Log.warn "overwriting indexed fragments cache: %s" cache_fn
+        Log.warn "overwriting fragments cache: %s" cache_fn
       else
-        Log.info "creating indexed fragments cache: %s" cache_fn in
+        Log.info "creating fragments cache: %s" cache_fn in
     LO.save cache_fn frags_ht
   else
     Log.warn "cache file already exists (use -f to overwrite): %s" cache_fn
 
 let load_indexed_fragments maybe_out_fn force frags_fn =
   let cache_fn = frags_fn ^ ".bin_cache" in
-  if (not force) && Sys.file_exists cache_fn then
+  if not force && Sys.file_exists cache_fn then
     let () = Log.info "reading indexed fragments from cache: %s" cache_fn in
     LO.restore cache_fn
   else
@@ -523,6 +523,11 @@ let initialize_gaussians frags_ht mu s2 =
       (* !!! DO NOT use A.make !!! *)
       A.map (fun _fid -> { mu; s2 }) frags
     ) frags_ht
+
+let create_frags_ht maybe_frags_out_fn force input_frags_fn =
+  let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
+  cache_indexed_fragments force input_frags_fn res;
+  res
 
 let main () =
   let start = Unix.gettimeofday () in
@@ -589,10 +594,7 @@ let main () =
      exit 1
   );
   Log.info "indexing fragments";
-  let frags_ht =
-    let res = load_indexed_fragments maybe_frags_out_fn force input_frags_fn in
-    cache_indexed_fragments force input_frags_fn res;
-    res in
+  let frags_ht = create_frags_ht maybe_frags_out_fn force input_frags_fn in
   Log.info "seeds: %d; attach_types: %d"
     (A.length (Ht.find frags_ht (-1, -1))) (Ht.length frags_ht - 1);
   let ij2dists, dists_out_fn =
