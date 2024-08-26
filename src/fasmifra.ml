@@ -549,6 +549,26 @@ let handle_scores maybe_scores_fn maybe_s ij2dists dists_out_fn =
       let () = Log.info "writing gaussians to %s" dists_out_fn in
       save_gaussians ij2dists dists_out_fn
 
+(* load gaussians, if necessary
+ * return (gaussians_ht, out_gauss_fn) *)
+let handle_ig_og_cli_options maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe_s frags_ht =
+  match (maybe_in_gauss_fn, maybe_out_gauss_fn) with
+  | (None, None) -> (Ht.create 0, "/dev/null")
+  | (_, None) -> (Log.fatal "-ig requires -og"; exit 1)
+  | (None, Some out_fn) ->
+    begin match (maybe_mu, maybe_s) with
+      | (Some mu, Some s) ->
+        (Log.info "init gaussians";
+         (initialize_gaussians frags_ht mu s, out_fn))
+      | _ -> (Log.fatal "-og without -ig requires -mu and -s"; exit 1)
+    end
+  | (Some in_fn, Some out_fn) ->
+    if in_fn = out_fn then
+      (Log.fatal "-og would overwrite -ig"; exit 1)
+    else match maybe_s with
+      | None -> (Log.fatal "-ig requires -s"; exit 1)
+      | Some _ -> (load_gaussians in_fn, out_fn)
+
 let main () =
   let start = Unix.gettimeofday () in
   (* Logger ---------------------------------------------------------------- *)
@@ -618,31 +638,8 @@ let main () =
   Log.info "seeds: %d; attach_types: %d"
     (A.length (Ht.find frags_ht (-1, -1))) (Ht.length frags_ht - 1);
   let ij2dists, dists_out_fn =
-    match (maybe_in_gauss_fn, maybe_out_gauss_fn) with
-    | (None, None) -> (Ht.create 0, "/dev/null")
-    | (_, None) ->
-      let () = Log.fatal "-ig requires -og" in
-      exit 1
-    | (None, Some out_fn) ->
-      (match (maybe_mu, maybe_s) with
-       | (Some mu, Some s) ->
-         let () = Log.info "init gaussians" in
-         let ht = initialize_gaussians frags_ht mu s in
-         (ht, out_fn)
-       | _ ->
-         let () = Log.fatal "-og without -ig requires -mu and -s" in
-         exit 1)
-    | (Some in_fn, Some out_fn) ->
-      if in_fn = out_fn then
-        let () = Log.fatal "-og would overwrite -ig" in
-        exit 1
-      else
-        match maybe_s with
-        | None ->
-          let () = Log.fatal "-ig requires -s" in
-          exit 1
-        | Some _ ->
-          (load_gaussians in_fn, out_fn) in
+    handle_ig_og_cli_options
+      maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe_s frags_ht in
   handle_scores maybe_scores_fn maybe_s ij2dists dists_out_fn;
   let choose_frag = match maybe_s with
     | None -> (Log.info "Uniform Random Sampling";
