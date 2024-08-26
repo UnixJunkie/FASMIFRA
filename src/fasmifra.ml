@@ -41,15 +41,13 @@ let renumber_ring_closure ht (smi_depth: int) (ring_closure: int) =
 
 let parse_cut_bond s =
   try Scanf.sscanf s "[*:%d][*:%d]" (fun i j -> Cut_bond (i, j))
-  with exn ->
-    let () = Log.fatal "Fasmifra.parse_cut_bond: cannot parse '%s'" s in
-    raise exn
+  with exn -> (Log.fatal "Fasmifra.parse_cut_bond: cannot parse '%s'" s;
+               raise exn)
 
 let parse_paren_cut_bond s =
   try Scanf.sscanf s "[*:%d]([*:%d]" (fun i j -> (i, j))
-  with exn ->
-    let () = Log.fatal "Fasmifra.parse_paren_cut_bond: cannot parse '%s'" s in
-    raise exn
+  with exn -> (Log.fatal "Fasmifra.parse_paren_cut_bond: cannot parse '%s'" s;
+               raise exn)
 
 exception Too_many_rings
 
@@ -298,8 +296,7 @@ let string_of_dist d =
 let dist_of_string s =
   Scanf.sscanf s "%f/%f" (fun mu s2 ->
       if s2 = 0.0 then
-        let () = Log.fatal "s=0" in
-        exit 1
+        (Log.fatal "s=0"; exit 1)
       else
         { mu; s2 })
 
@@ -538,9 +535,7 @@ let handle_scores maybe_scores_fn maybe_s ij2dists dists_out_fn =
     let () = Log.info "reading scores from %s" scores_fn in
     let name_scores = load_scores scores_fn in
     match maybe_s with
-    | None ->
-      let () = Log.fatal "--scores requires -s (expected std. dev.)" in
-      exit 1
+    | None -> (Log.fatal "--scores requires -s (expected std. dev.)"; exit 1)
     | Some s ->
       (* assumed global VARIANCE, given known standard deviation *)
       let s2 = s *. s in
@@ -630,8 +625,7 @@ let main () =
                     BatRandom.State.make [|seed|]) in
   CLI.finalize (); (* ------------ CLI parsing ----------------------------- *)
   (if Option.is_some maybe_frags_out_fn && output_fn <> "/dev/null" then
-     let () = Log.fatal "use either -o (most users) or -of" in
-     exit 1
+     (Log.fatal "use either -o (most users) or -of"; exit 1)
   );
   Log.info "indexing fragments";
   let frags_ht = create_frags_ht maybe_frags_out_fn force input_frags_fn in
@@ -649,8 +643,7 @@ let main () =
   let assemble =
     if use_deep_smiles then
       if preserve_cut_bonds then
-        (Log.fatal "DeepSMILES: unsupported -pcb";
-         exit 1)
+        (Log.fatal "DeepSMILES: unsupported -pcb"; exit 1)
       else
         assemble_deepsmiles_fragments
     else (* use SMILES *)
