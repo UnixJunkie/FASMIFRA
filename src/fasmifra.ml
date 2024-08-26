@@ -529,6 +529,26 @@ let create_frags_ht maybe_frags_out_fn force input_frags_fn =
   cache_indexed_fragments force input_frags_fn res;
   res
 
+(* if a scores file is provided, read it, update gaussians
+   then save them to disk *)
+let handle_scores maybe_scores_fn maybe_s ij2dists dists_out_fn =
+  match maybe_scores_fn with
+  | None -> ()
+  | Some scores_fn ->
+    let () = Log.info "reading scores from %s" scores_fn in
+    let name_scores = load_scores scores_fn in
+    match maybe_s with
+    | None ->
+      let () = Log.fatal "--scores requires -s (expected std. dev.)" in
+      exit 1
+    | Some s ->
+      (* assumed global VARIANCE, given known standard deviation *)
+      let s2 = s *. s in
+      let () = Log.info "updating gaussians" in
+      update_many_gaussians s2 ij2dists name_scores;
+      let () = Log.info "writing gaussians to %s" dists_out_fn in
+      save_gaussians ij2dists dists_out_fn
+
 let main () =
   let start = Unix.gettimeofday () in
   (* Logger ---------------------------------------------------------------- *)
@@ -623,23 +643,7 @@ let main () =
           exit 1
         | Some _ ->
           (load_gaussians in_fn, out_fn) in
-  (match maybe_scores_fn with
-   | None -> ()
-   | Some scores_fn ->
-     let () = Log.info "reading scores from %s" scores_fn in
-     let name_scores = load_scores scores_fn in
-     match maybe_s with
-     | None ->
-       let () = Log.fatal "--scores requires -s" in
-       exit 1
-     | Some s ->
-       (* assumed global VARIANCE, given known standard deviation *)
-       let s2 = s *. s in
-       let () = Log.info "updating gaussians" in
-       update_many_gaussians s2 ij2dists name_scores;
-       let () = Log.info "writing new gaussians to %s" dists_out_fn in
-       save_gaussians ij2dists dists_out_fn
-  );
+  handle_scores maybe_scores_fn maybe_s ij2dists dists_out_fn;
   let choose_frag = match maybe_s with
     | None -> (Log.info "Uniform Random Sampling";
                uniform_random)
