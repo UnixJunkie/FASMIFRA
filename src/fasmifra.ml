@@ -522,11 +522,9 @@ let handle_ig_og_cli_options rng maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu m
   | (Some in_fn, Some out_fn) ->
     if in_fn = out_fn then
       (Log.fatal "-og would overwrite -ig"; exit 1)
-    else match maybe_s with
-      | None -> (Log.fatal "-ig requires -s"; exit 1)
-      | Some _ ->
-        let () = Log.info "reading welford params from %s" in_fn in
-        (load_welford_params in_fn, out_fn)
+    else 
+      let () = Log.info "reading welford params from %s" in_fn in
+      (load_welford_params in_fn, out_fn)
 
 let main () =
   let start = Unix.gettimeofday () in
@@ -548,19 +546,17 @@ let main () =
               [-mu <float>]: average score for all fragments\n  \
               (initial guess; for 1st TS iteration only)\n  \
               [-s <float>]: assumed standard deviation for all fragments\n  \
-              (for all TS iterations)\n  \
+              (initial guess; for 1st TS iteration only)\n  \
               [-of <filename>]: output SMILES fragments to file\n  \
               (not necessarily canonical SMILES; incompatible w/ -o)\n  \
-              [-ig <filename>]: load (fragments') gaussians from file\n  \
-              [-og <filename>]: output gaussians to file\n  \
+              [-ig <filename>]: load distribution params from file\n  \
+              [-og <filename>]: save distribution params to file\n  \
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
               [-ufi]: use frag. ids to name molecules\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
-              [--seed <int>]: RNG seed (for repeatable results\n  \
-              w/ same input file)\n  \
+              [--seed <int>]: RNG seed (for repeatable results)\n  \
               [--scores <filename>]: tab-separated name score file\n  \
-              (molecule names and order must match the input SMILES file;\n  \
-              for Thompson Sampling)\n  \
+              (for Thompson Sampling)\n  \
               [--deep-smiles]: input/output molecules in DeepSMILES\n  \
               no-rings format\n"
        Sys.argv.(0);
@@ -600,11 +596,13 @@ let main () =
       maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe_s frags_ht in
   handle_scores maybe_scores_fn ij2dists dists_out_fn;
   (* setup functional parameters ------------------------------------------- *)
-  let choose_frag = match maybe_s with
-    | None -> (Log.info "Uniform Random Sampling";
-               uniform_random)
-    | Some _ -> (Log.info "Thompson Sampling";
-                 thompson_max ij2dists) in
+  let choose_frag =
+    if Option.is_some maybe_scores_fn || Option.is_some maybe_in_gauss_fn then
+      (Log.info "Thompson Sampling";
+       thompson_max ij2dists)
+    else
+      (Log.info "Uniform Random Sampling";
+       uniform_random) in
   let assemble =
     if use_deep_smiles then
       if preserve_cut_bonds then
