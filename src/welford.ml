@@ -3,6 +3,7 @@
  * cf. https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance *)
 
 module A = BatArray
+module Log = Dolog.Log
 
 type t = { mu: float; (* mean *)
            sm2: float; (* sum of squared deviations to the mean *)
@@ -15,6 +16,17 @@ let create mu =
 (* special constructor (if you know all internal values) *)
 let create_full mu sm2 n =
   { mu; sm2; n }
+
+let to_string w =
+  Printf.sprintf "%g/%g:%g" w.mu w.sm2 w.n
+
+let of_string s =
+  Scanf.sscanf s "%f/%f:%f" (fun mu sm2 n ->
+      if sm2 = 0.0 || n < 2.0 then
+        (Log.fatal "Welford.of_string: forbidden params: %s" s; exit 1)
+      else
+        { mu; sm2; n }
+    )
 
 (* update rule (take into account new measurement) *)
 let update prev x =
