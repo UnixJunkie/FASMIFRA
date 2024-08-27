@@ -285,21 +285,6 @@ let frag_id_of_string x =
 let frag_ids_of_string s =
   L.map frag_id_of_string (S.split_on_char ',' s)
 
-(* a Gaussian distribution *)
-type dist = { mu: float; (* mean *)
-              s2: float (* sigma^2 (variance) *) }
-
-let string_of_dist d =
-  (* think about m+/-s, but shorter *)
-  sprintf "%g/%g" d.mu d.s2
-
-let dist_of_string s =
-  Scanf.sscanf s "%f/%f" (fun mu s2 ->
-      if s2 = 0.0 then
-        (Log.fatal "s=0"; exit 1)
-      else
-        { mu; s2 })
-
 let rev_renumber_ring_closures ht i tokens =
   let res =
     L.rev_map (function
@@ -309,46 +294,18 @@ let rev_renumber_ring_closures ht i tokens =
   incr i;
   res
 
-let almost_one = Float.pred 1.0
-(* enforce that the highest float we can draw is <1.0 *)
-let _ = assert(almost_one < 1.0)
-let pi = 4.0 *. (atan 1.0)
-let two_pi = 2.0 *. pi
-
-(* [gauss mu sigma] get one float from the normal distribution
-   with mean=mu and stddev=sigma
-   a = cos(2*pi*x) * sqrt(-2*log(1-y))
-   b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below)
-   cf. Python's documentation of random.gauss function *)
-let gauss rng dist =
-  dist.mu +. ((sqrt dist.s2) *.
-              (cos (two_pi *. (Random.State.float rng almost_one)) *.
-               sqrt (-2.0 *. log (1.0 -. (Random.State.float rng almost_one)))))
-
-(* formulas (4) and (5) in p. 1160 of
- * "Thompson Sampling-An Efficient Method for Searching Ultralarge Synthesis
- * on Demand Databases"; https://doi.org/10.1021/acs.jcim.3c01790
- * [d_t]: distribution for fragment i at time t
- * [s2]: assumed global variance for all fragments
- * [x_t]: observation for fragment i at t
- * returns the updated distribution for fragment i at t+1 *)
-let update_gaussian d_t s2 x_t =
-  let denom = d_t.s2 +. s2 in
-  { mu = ((d_t.s2 *. x_t) +. (s2 *. d_t.mu)) /. denom;
-    s2 = (d_t.s2 *. s2) /. denom }
-
 (* for one molecule whose composition is known,
  * (seed and fragments ids), update impacted beliefs *)
-let update_gaussians dists_ht s2 score frag_ids =
+let update_distributions dists_ht score frag_ids =
   L.iter (fun { i_j; k } ->
       let arr = Ht.find dists_ht i_j in
-      arr.(k) <- update_gaussian arr.(k) s2 score
+      arr.(k) <- Welford.update arr.(k) score
     ) frag_ids
 
-let update_many_gaussians s2 ij2dists name_scores =
+let update_many_distributions ij2dists name_scores =
   L.iter (fun (mol_name, score) ->
       let frag_ids = frag_ids_of_string mol_name in
-      update_gaussians ij2dists s2 score frag_ids
+      update_distributions ij2dists score frag_ids
     ) name_scores
 
 (* default fragment sampling policy for training-set distribution matching *)
@@ -358,7 +315,11 @@ let uniform_random rng _ij n =
 (* for maximization *)
 let thompson_max ij2dists rng ij _n =
   let dists = Ht.find ij2dists ij in
-  let samples = A.map (gauss rng) dists in
+  let samples =
+    A.map (fun w ->
+        (* create the corresponding Gaussian, sample from it *)
+        Gauss.sample rng (Gauss.create (Welford.mean w) (Welford.sample_s2 w))
+      ) dists in
   let maxi = A.max samples in
   (* uniform random choice among fragments that scored best *)
   let candidates = ref [] in
@@ -474,10 +435,10 @@ let load_indexed_fragments maybe_out_fn force frags_fn =
     index_fragments maybe_out_fn input_frags
 
 (* fragments dictionary header line *)
-let dict_header = "#i_j:mean_stddevs"
+let dict_header = "#i_j:welford_params"
 
 (* save distributions to file *)
-let save_gaussians ht fn =
+let save_welford_params ht fn =
   LO.with_out_file fn (fun out ->
       fprintf out "%s\n" dict_header;
       (* always output gaussians in the same order *)
@@ -485,17 +446,16 @@ let save_gaussians ht fn =
       A.sort (fun (k1, _v1) (k2, _v2) -> compare k1 k2) key_values;
       A.iter (fun ((i, j), arr) ->
           fprintf out "%d-%d:" i j;
-          A.iteri (fun k dist ->
-              if k > 0 then
-                fprintf out ",%g/%g" dist.mu dist.s2
-              else
-                fprintf out "%g/%g" dist.mu dist.s2
+          A.iteri (fun k w ->
+              fprintf out
+                (if k > 0 then ",%s" else "%s")
+                (Welford.to_string w)
             ) arr;
           fprintf out "\n" (* terminate this record *)
         ) key_values
     )
 
-let load_gaussians fn =
+let load_welford_params fn =
   let lines = LO.lines_of_file fn in
   match lines with
   | [] -> assert false
@@ -504,21 +464,27 @@ let load_gaussians fn =
     let num_bindings = L.length body in
     let res = Ht.create num_bindings in
     L.iter (fun line ->
-        let i, j, mean_stdevs =
+        let i, j, welford_params =
           Scanf.sscanf line "%d-%d:%s" (fun i j rest -> (i, j, rest)) in
-        let dists = A.of_list (L.map dist_of_string (S.split_on_char ',' mean_stdevs)) in
-        Ht.add res (i, j) dists
+        let ws = A.of_list (L.map Welford.of_string (S.split_on_char ',' welford_params)) in
+        Ht.add res (i, j) ws
       ) body;
     res
 
 (* attach a distribution to each fragment;
    we should do this only at the first iteration:
    -mu and -s are provided; no -ig
-   in subsequent iterations: -s and -ig are needed *)
-let initialize_gaussians frags_ht mu s2 =
+   in subsequent iterations: only -ig is needed *)
+let initialize_gaussians rng frags_ht mu s2 =
+  (* At start, we assume each fragment was scored 10 times using
+     a scoring function w/ known distribution; somewhat arbitrary but inspired
+     by the warmup step in
+     "Thompson Sampling-An Efficient Method for Searching Ultralarge
+     Synthesis on Demand Databases" https://doi.org/10.1021/acs.jcim.3c01790 *)
+  let samples = Gauss.samples rng (Gauss.create mu s2) 10 in
   Ht.map (fun _i_j frags ->
       (* !!! DO NOT use A.make !!! *)
-      A.map (fun _fid -> { mu; s2 }) frags
+      A.map (fun _fid -> Welford.of_samples samples) frags
     ) frags_ht
 
 let create_frags_ht maybe_frags_out_fn force input_frags_fn =
@@ -526,35 +492,31 @@ let create_frags_ht maybe_frags_out_fn force input_frags_fn =
   cache_indexed_fragments force input_frags_fn res;
   res
 
-(* if a scores file is provided, read it, update gaussians
-   then save them to disk *)
-let handle_scores maybe_scores_fn maybe_s ij2dists dists_out_fn =
+(* if a scores file is provided, read it, update gaussian parameters
+   then save them to disk for the next iteration *)
+let handle_scores maybe_scores_fn ij2dists dists_out_fn =
   match maybe_scores_fn with
   | None -> ()
   | Some scores_fn ->
     let () = Log.info "reading scores from %s" scores_fn in
     let name_scores = load_scores scores_fn in
-    match maybe_s with
-    | None -> (Log.fatal "--scores requires -s (expected std. dev.)"; exit 1)
-    | Some s ->
-      (* assumed global VARIANCE, given known standard deviation *)
-      let s2 = s *. s in
-      let () = Log.info "updating gaussians" in
-      update_many_gaussians s2 ij2dists name_scores;
-      let () = Log.info "writing gaussians to %s" dists_out_fn in
-      save_gaussians ij2dists dists_out_fn
+    let () = Log.info "updating gaussians" in
+    update_many_distributions ij2dists name_scores;
+    let () = Log.info "writing welford params to %s" dists_out_fn in
+    save_welford_params ij2dists dists_out_fn
 
 (* load gaussians, if necessary
  * return (gaussians_ht, out_gauss_fn) *)
-let handle_ig_og_cli_options maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe_s frags_ht =
+let handle_ig_og_cli_options rng maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe_s frags_ht =
   match (maybe_in_gauss_fn, maybe_out_gauss_fn) with
   | (None, None) -> (Ht.create 0, "/dev/null")
   | (_, None) -> (Log.fatal "-ig requires -og"; exit 1)
   | (None, Some out_fn) ->
     begin match (maybe_mu, maybe_s) with
       | (Some mu, Some s) ->
-        (Log.info "init gaussians";
-         (initialize_gaussians frags_ht mu s, out_fn))
+        let () = Log.info "init gaussians" in
+        let s2 = s *. s in
+        (initialize_gaussians rng frags_ht mu s2, out_fn)
       | _ -> (Log.fatal "-og without -ig requires -mu and -s"; exit 1)
     end
   | (Some in_fn, Some out_fn) ->
@@ -563,8 +525,8 @@ let handle_ig_og_cli_options maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe
     else match maybe_s with
       | None -> (Log.fatal "-ig requires -s"; exit 1)
       | Some _ ->
-        (Log.info "reading gaussians from %s" in_fn;
-         (load_gaussians in_fn, out_fn))
+        let () = Log.info "reading welford params from %s" in_fn in
+        (load_welford_params in_fn, out_fn)
 
 let main () =
   let start = Unix.gettimeofday () in
@@ -594,7 +556,7 @@ let main () =
               [-pcb]: Preserve Cut Bonds (PCB) in output file\n  \
               [-ufi]: use frag. ids to name molecules\n  \
               [-f]: overwrite existing indexed fragments cache file\n  \
-              [-s|--seed <int>]: RNG seed (for repeatable results\n  \
+              [--seed <int>]: RNG seed (for repeatable results\n  \
               w/ same input file)\n  \
               [--scores <filename>]: tab-separated name score file\n  \
               (molecule names and order must match the input SMILES file;\n  \
@@ -620,7 +582,7 @@ let main () =
   let preserve_cut_bonds = CLI.get_set_bool ["-pcb"] args in
   let maybe_mu = CLI.get_float_opt ["-mu"] args in
   let maybe_s = CLI.get_float_opt ["-s"] args in
-  let get_rng, rng = match CLI.get_int_opt ["-s";"--seed"] args with
+  let get_rng, rng = match CLI.get_int_opt ["--seed"] args with
     | None -> ((fun x -> x),
                BatRandom.State.make_self_init ())
     | Some seed -> ((fun x -> Random.State.split x),
@@ -634,9 +596,9 @@ let main () =
   Log.info "seeds: %d; attach_types: %d"
     (A.length (Ht.find frags_ht (-1, -1))) (Ht.length frags_ht - 1);
   let ij2dists, dists_out_fn =
-    handle_ig_og_cli_options
+    handle_ig_og_cli_options (get_rng rng)
       maybe_in_gauss_fn maybe_out_gauss_fn maybe_mu maybe_s frags_ht in
-  handle_scores maybe_scores_fn maybe_s ij2dists dists_out_fn;
+  handle_scores maybe_scores_fn ij2dists dists_out_fn;
   (* setup functional parameters ------------------------------------------- *)
   let choose_frag = match maybe_s with
     | None -> (Log.info "Uniform Random Sampling";
