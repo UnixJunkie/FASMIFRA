@@ -5,7 +5,7 @@ type t = { mu: float; (* mean *)
 
 let to_string d =
   (* think about m+/-s, but shorter *)
-  sprintf "%g/%g" d.mu d.s2
+  Printf.sprintf "%g/%g" d.mu d.s2
 
 let of_string s =
   Scanf.sscanf s "%f/%f" (fun mu s2 ->
@@ -30,3 +30,7 @@ let sample rng dist =
   dist.mu +. ((sqrt dist.s2) *.
               (cos (two_pi *. (Random.State.float rng almost_one)) *.
                sqrt (-2.0 *. log (1.0 -. (Random.State.float rng almost_one)))))
+
+(* sample [n] times *)
+let samples rng dist n =
+  Array.init n (fun _i -> sample rng dist)
