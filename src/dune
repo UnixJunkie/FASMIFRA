@@ -3,4 +3,4 @@
   (names        fasmifra)
   (public_names fasmifra)
   (libraries batteries dolog minicli unix str line_oriented)
-  (modules fasmifra welford gauss))
+  (modules welford gauss fasmifra))
