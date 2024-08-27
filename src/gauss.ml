@@ -1,7 +1,12 @@
 
+module Log = Dolog.Log
+
 (* a Gaussian distribution *)
 type t = { mu: float; (* mean *)
            s2: float (* sigma^2 (variance) *) }
+
+let create mu s2 =
+  { mu; s2 }
 
 let to_string d =
   (* think about m+/-s, but shorter *)
