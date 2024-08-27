@@ -423,7 +423,7 @@ let cache_indexed_fragments force frags_fn frags_ht =
         Log.info "creating fragments cache: %s" cache_fn in
     LO.save cache_fn frags_ht
   else
-    Log.warn "cache file already exists (use -f to overwrite): %s" cache_fn
+    Log.warn "using cache file (use -f to overwrite): %s" cache_fn
 
 let load_indexed_fragments maybe_out_fn force frags_fn =
   let cache_fn = frags_fn ^ ".bin_cache" in
