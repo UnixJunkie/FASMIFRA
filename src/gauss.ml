@@ -30,7 +30,7 @@ let two_pi = 2.0 *. pi
    with mean=mu and stddev=sigma
    a = cos(2*pi*x) * sqrt(-2*log(1-y))
    b = sin(2*pi*x) * sqrt(-2*log(1-y)) (b is ignored below)
-   cf. Python's documentation of random.gauss function *)
+   cf. Python's code of random.gauss function *)
 let sample rng dist =
   dist.mu +. ((sqrt dist.s2) *.
               (cos (two_pi *. (Random.State.float rng almost_one)) *.
