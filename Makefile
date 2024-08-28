@@ -1,7 +1,7 @@
 .PHONY: build clean edit install uninstall reinstall
 
 build:
-	dune build @install -j 16
+	dune build --profile=release @install -j 16
 
 clean:
 	rm -rf _build
