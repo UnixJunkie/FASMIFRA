@@ -476,12 +476,12 @@ let load_welford_params fn =
    -mu and -s are provided; no -ig
    in subsequent iterations: only -ig is needed *)
 let initialize_gaussians rng frags_ht mu s2 =
-  (* At start, we assume each fragment was scored 10 times using
+  (* At start, we assume each fragment was scored 5 times using
      a scoring function w/ known distribution; somewhat arbitrary but inspired
-     by the warmup step in
+     by the random warmup procedure from
      "Thompson Sampling-An Efficient Method for Searching Ultralarge
      Synthesis on Demand Databases" https://doi.org/10.1021/acs.jcim.3c01790 *)
-  let samples = Gauss.samples rng (Gauss.create mu s2) 10 in
+  let samples = Gauss.samples rng (Gauss.create mu s2) 5 in
   Ht.map (fun _i_j frags ->
       (* !!! DO NOT use A.make !!! *)
       A.map (fun _fid -> Welford.of_samples samples) frags
