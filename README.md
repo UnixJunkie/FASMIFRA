@@ -94,3 +94,10 @@ chemrxiv.org
 [3] Weininger, D. (1988). SMILES, a chemical language and information system.
 "1. Introduction to methodology and encoding rules".
 Journal of chemical information and computer sciences, 28(1), 31-36.
+https://doi.org/10.1021/ci00057a005
+
+[4] Klarich, K., Goldman, B., Kramer, T., Riley, P., & Walters, W. P. (2024). Thompson Sampling-An Efficient Method for Searching Ultralarge Synthesis on Demand Databases. Journal of Chemical Information and Modeling, 64(4), 1158-1171.
+https://doi.org/10.1021/acs.jcim.3c01790
+
+[5] Welford, B. P. (1962). Note on a method for calculating corrected sums of squares and products. Technometrics, 4(3), 419-420.
+https://doi.org/10.1080/00401706.1962.10490022
