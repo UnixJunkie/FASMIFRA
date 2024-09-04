@@ -7,6 +7,6 @@
 
 ;; never installed executables
 (executables
-  (names gauss_test)
-  (modules gauss_test gauss)
-  (libraries batteries dolog))
+  (names gauss_test welford_test)
+  (modules gauss_test gauss welford_test welford)
+  (libraries batteries dolog line_oriented))
