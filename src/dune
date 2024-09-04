@@ -4,3 +4,9 @@
   (public_names fasmifra)
   (libraries batteries dolog minicli unix str line_oriented)
   (modules welford gauss fasmifra))
+
+;; never installed executables
+(executables
+  (names gauss_test)
+  (modules gauss_test gauss)
+  (libraries batteries dolog))
