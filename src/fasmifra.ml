@@ -53,7 +53,7 @@ exception Too_many_rings
 
 let string_of_ring_closure c =
   if c > 99 then (* forbid triple digits ring closure *)
-    (Log.fatal "Fasmifra.string_of_ring_closure: %d > 99" c;
+    (Log.error "Fasmifra.string_of_ring_closure: %d > 99" c;
      raise Too_many_rings)
   else if c > 9 then
     (* a double digit ring closure in SMILES must be prefixed by % *)
