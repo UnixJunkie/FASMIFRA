@@ -61,15 +61,6 @@ let string_of_ring_closure c =
   else
     sprintf "%d" c
 
-let fprintf_ring_closure out c =
-  if c > 99 then (* forbid triple digits ring closure *)
-    (Log.fatal "Fasmifra.fprintf_ring_closure: %d > 99" c;
-     raise Too_many_rings)
-  else if c > 9 then
-    fprintf out "%%%d" c
-  else
-    fprintf out "%d" c
-
 (* for debugging *)
 let string_of_smi_token = function
   | Open_paren -> "("
@@ -82,23 +73,15 @@ let string_of_smi_token = function
   | Bracket_atom x
   | Rest x -> x
 
-(* for performance *)
-let fprintf_smi_token out = function
-  | Open_paren -> output_char out '('
-  | Close_paren -> output_char out ')'
-  | Cut_bond (i, j) ->
-    (* in some use cases, cut bonds are supposed to have been deleted by
-       assemble_smiles_fragments *)
-    fprintf out "[*:%d][*:%d]" i j
-  | Ring_closure rc -> fprintf_ring_closure out rc
-  | Bracket_atom x
-  | Rest x -> output_string out x
-
 let string_of_tokens tokens =
   String.concat "" (L.map string_of_smi_token tokens)
 
 let fprintf_tokens out tokens =
-  L.iter (fprintf_smi_token out) tokens
+  (* force all tokens to be translated to strings;
+     so that if Too_many_rings is thrown, it happens now
+     while nothing has been written out yet *)
+  let strings = L.map string_of_smi_token tokens in
+  L.iter (output_string out) strings
 
 let parse_double_digit_ring_closure s =
   try Scanf.sscanf s "%%%d" (fun x -> assert(x >= 10); x)
