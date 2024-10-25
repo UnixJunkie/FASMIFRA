@@ -7,9 +7,10 @@ dev-repo: "git+https://github.com/UnixJunkie/FASMIFRA.git"
 license: "GPL-3.0-or-later"
 build: ["dune" "build" "-p" name "-j" jobs]
 install: [
-  ["cp" "bin/fasmifra_fragment.py" "%{bin}%/fasmifra_fragment.py"]
+  ["cp" "bin/fasmifra_fragment.py"     "%{bin}%/fasmifra_fragment.py"]
   ["cp" "bin/fasmifra_rm_cut_bonds.sh" "%{bin}%/fasmifra_rm_cut_bonds.sh"]
-  ["cp" "bin/fasmifra_frag_dict.py" "%{bin}%/fasmifra_frag_dict.py"]
+  ["cp" "bin/fasmifra_frag_dict.py"    "%{bin}%/fasmifra_frag_dict.py"]
+  ["cp" "bin/fasmifra_GA.sh"           "%{bin}%/fasmifra_GA.sh"]
 ]
 depends: [
   "base-unix"
